@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"agent/background"
 	"agent/compact"
 	"agent/config"
 	"agent/hook"
@@ -194,8 +195,14 @@ func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContex
 		for _, block := range message.Content {
 			switch block := block.AsAny().(type) {
 			case anthropic.ServerToolUseBlock:
+
+				if background.IsSlowOperation(string(block.Name), block) {
+
+				}
+
 				currentSession.Logger.Printf("[server_tool_call] tool=%v id=%v", block.Name, block.ID)
 				fmt.Printf("[server_tool_call] tool=%v id=%v\n", block.Name, block.ID)
+
 			case anthropic.ToolUseBlock:
 				var input map[string]any
 				err = json.Unmarshal([]byte(block.JSON.Input.Raw()), &input)
