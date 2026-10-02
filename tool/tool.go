@@ -238,7 +238,7 @@ var ClientTools = []anthropic.ToolParam{
 		InputSchema: anthropic.ToolInputSchemaParam{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"cron": map[string]interface{}{
+				"cron_expr": map[string]interface{}{
 					"type":        "string",
 					"description": "5-filed cron expression",
 				},
@@ -246,7 +246,7 @@ var ClientTools = []anthropic.ToolParam{
 					"type":        "string",
 					"description": "Message to inject when fired",
 				},
-				"recurrring": map[string]interface{}{
+				"recurring": map[string]interface{}{
 					"type":        "boolean",
 					"description": "True=recurring, False=one-shot",
 				},
@@ -255,7 +255,7 @@ var ClientTools = []anthropic.ToolParam{
 					"description": "True=persist to disk",
 				},
 			},
-			Required: []string{"cron", "prompt"},
+			Required: []string{"cron_expr", "prompt"},
 		},
 	},
 
