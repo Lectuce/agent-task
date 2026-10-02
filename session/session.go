@@ -1,6 +1,7 @@
 package session
 
 import (
+	"agent/background"
 	"agent/logx"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ type Session struct {
 	Messages        []anthropic.MessageParam
 	RoundsSinceTodo int
 	Logger          *log.Logger
+	Background      *background.Manager
 }
 
 type SessionManager struct {
@@ -30,9 +32,10 @@ func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		Sessions: map[string]*Session{
 			"default": {
-				ID:       "default",
-				Messages: []anthropic.MessageParam{},
-				Logger:   sessionLogger,
+				ID:         "default",
+				Messages:   []anthropic.MessageParam{},
+				Logger:     sessionLogger,
+				Background: background.NewManager(),
 			},
 		},
 		Current: "default",
@@ -52,9 +55,10 @@ func (sm *SessionManager) NewSession(name string) bool {
 	}
 
 	sm.Sessions[name] = &Session{
-		ID:       name,
-		Messages: []anthropic.MessageParam{},
-		Logger:   logger,
+		ID:         name,
+		Messages:   []anthropic.MessageParam{},
+		Logger:     logger,
+		Background: background.NewManager(),
 	}
 	sm.Current = name
 	return true

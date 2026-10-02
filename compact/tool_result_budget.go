@@ -12,6 +12,9 @@ import (
 )
 
 func ToolResultBudget(messages []anthropic.MessageParam, maxBytes int) []anthropic.MessageParam {
+	if len(messages) == 0 {
+		return messages
+	}
 	last := &messages[len(messages)-1]
 	indeices := make([]int, 0)
 	total := 0

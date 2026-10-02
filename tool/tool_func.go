@@ -3,6 +3,7 @@ package tool
 import (
 	"agent/config"
 	"agent/skills"
+	"agent/task"
 	"context"
 	"fmt"
 	"os"
@@ -187,4 +188,184 @@ func runCalculator(input map[string]any) (string, error) {
 	}
 
 	return fmt.Sprintf("%v", result), nil
+}
+
+func runCreateTask(input map[string]any) (string, error) {
+	subject, ok := input["subject"].(string)
+	if !ok || subject == "" {
+		return "", fmt.Errorf("subject is required")
+	}
+
+	description, _ := input["description"].(string)
+
+	blockedBy := make([]string, 0)
+	raw, ok := input["blocked_by"].([]any)
+	if ok {
+		for _, item := range raw {
+			s, ok := item.(string)
+			if ok {
+				blockedBy = append(blockedBy, s)
+			}
+		}
+	}
+
+	task, err := task.CreateTask(subject, description, blockedBy)
+	if err != nil {
+		return "", err
+	}
+	deps := ""
+	if len(blockedBy) > 0 {
+		deps = fmt.Sprintf(" (blockedBy: %s)", strings.Join(blockedBy, ", "))
+	}
+	fmt.Printf("  \033[34m[create] %v%v\033[0m", task.Subject, deps)
+	return fmt.Sprintf("Create %v: %v%v\n", task.ID, task.Subject, deps), nil
+}
+
+func runListTasks(input map[string]any) (string, error) {
+	tasks, err := task.ListTasks()
+	if err != nil {
+		return "", err
+	}
+	if len(tasks) == 0 {
+		return "", fmt.Errorf("No tasks. Use create_task to add some.")
+	}
+	lines := make([]string, 0)
+	for _, t := range tasks {
+		icon := "?"
+
+		switch t.Status {
+		case task.StatusPending:
+			icon = "○"
+
+		case task.StatusInProgress:
+			icon = "●"
+
+		case task.StatusCompleted:
+			icon = "✓"
+		}
+
+		deps := ""
+		if len(t.BlockedBy) > 0 {
+			deps = fmt.Sprintf(
+				" (blockedBy: %s)",
+				strings.Join(
+					t.BlockedBy,
+					", ",
+				),
+			)
+		}
+
+		owner := ""
+		if t.Owner != nil {
+			owner = fmt.Sprintf(" [%s]", *t.Owner)
+		}
+
+		line := fmt.Sprintf(
+			"  %s %s: %s [%s]%s%s",
+			icon,
+			t.ID,
+			t.Subject,
+			t.Status,
+			owner,
+			deps,
+		)
+
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
+func runGetTask(input map[string]any) (string, error) {
+	taskID, ok := input["task_id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("task_id is required")
+	}
+	result, err := task.GetTasks(taskID)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Sprintf("Error: Task %s not found", taskID), nil
+		}
+		return "", err
+	}
+	return result, nil
+
+}
+
+func runClaimTask(input map[string]any) (string, error) {
+	taskID, ok := input["task_id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("task_id is required")
+	}
+	return task.ClaimTask(taskID, "agent")
+}
+
+func runCompleteTask(input map[string]any) (string, error) {
+	taskID, ok := input["task_id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("task_id is required")
+	}
+	return task.CompleteTask(taskID)
+}
+
+func runScheduleCron(input map[string]any) (string, error) {
+	cronExpr, ok := input["cron_expr"].(string)
+	if !ok || cronExpr == "" {
+		return "", fmt.Errorf("cron_expr is required")
+	}
+	prompt, ok := input["prompt"].(string)
+	if !ok || prompt == "" {
+		return "", fmt.Errorf("prompt is required")
+	}
+	recurring := true
+	v, ok := input["recurring"].(bool)
+	if ok {
+		recurring = v
+	}
+	durable := true
+	u, ok := input["durable"].(bool)
+	if ok {
+		durable = u
+	}
+	cronJob, err := CronManager.ScheduleJob(cronExpr, prompt, recurring, durable)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Scheduled %s: '%s' -> %s", cronJob.ID, cronJob.Cron, cronJob.Prompt), nil
+}
+
+func runListCrons(input map[string]any) (string, error) {
+	cronJobs := CronManager.ListJobs()
+	if len(cronJobs) == 0 {
+		return "", fmt.Errorf("No cron jobs. Use schedule_cron to add one")
+	}
+
+	lines := make([]string, 0)
+
+	for _, job := range cronJobs {
+		tag := "one-shot"
+		if job.Recurring {
+			tag = "recurring"
+		}
+
+		dur := "durable"
+		if job.Durable {
+			dur = "session"
+		}
+
+		lines = append(lines, fmt.Sprintf("  %v: '%v' → %v [%v, %v]", job.ID, job.Cron, job.Prompt[:40], tag, dur))
+
+	}
+
+	result := strings.Join(lines, "\n")
+	return result, nil
+}
+
+func runCancleCron(input map[string]any) (string, error) {
+	jobID, ok := input["job_id"].(string)
+	if !ok || jobID == "" {
+		return "", fmt.Errorf("job_id is required")
+	}
+	return CronManager.CancelJob(jobID)
+
 }

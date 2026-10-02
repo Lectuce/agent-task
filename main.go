@@ -1,11 +1,14 @@
 package main
 
 import (
+	"agent/config"
+	"agent/cron"
 	"agent/hook"
 	"agent/loop"
 	"agent/prompt"
 	"agent/session"
 	"agent/skills"
+	"agent/tool"
 	"context"
 	"fmt"
 
@@ -20,7 +23,22 @@ func main() {
 	hook.Register()
 	fmt.Println("输入问题，回车发送。输入 q 退出。")
 	sessionManager := session.NewSessionManager()
-
+	promptContext, err := prompt.UpdateContext(prompt.PromptContext{}, nil)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	ctx := context.Background()
+	cronManager := cron.NewManager(config.DURABLE_PATH)
+	err = cronManager.LoadDurableJobs()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	tool.SetCronManager(cronManager)
+	go cronManager.SchedulerLoop()
+	go loop.QueueProcessorLoop(cronManager, ctx, promptContext, func() *session.Session {
+		return sessionManager.CurrentSession()
+	})
 	r, err := readline.New("agent[default] >> ")
 	if err != nil {
 		fmt.Println(err.Error())
@@ -28,16 +46,14 @@ func main() {
 	}
 
 	defer r.Close()
-	promptContext, err := prompt.UpdateContext(prompt.PromptContext{}, nil)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
 
 	for {
 		r.SetPrompt(fmt.Sprintf("agent[%s] >> ", sessionManager.Current))
 
 		query, err := r.Readline()
+		if err != nil {
+			fmt.Println(err.Error())
+		}
 		if query == "q" || query == "exit" || query == "" {
 			return
 		}
@@ -53,12 +69,12 @@ func main() {
 		query = hookCtx.Query
 
 		ctx := context.Background()
-		err = loop.AgentLoop(query, ctx, promptContext, sessionManager.CurrentSession())
-		if err != nil {
-			fmt.Printf("agent loop error: %v\n", err)
-			return
-		}
 
+		loop.AgentLock.Lock()
+		err = func() error {
+			defer loop.AgentLock.Unlock()
+			return loop.AgentLoop(query, ctx, promptContext, sessionManager.CurrentSession(), cronManager)
+		}()
 	}
 
 }

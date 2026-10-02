@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type Task struct {
+type BackgroundTask struct {
 	ID        string
 	ToolUseID string
 	Command   string
@@ -16,18 +16,16 @@ type Task struct {
 type Manager struct {
 	mu      sync.Mutex
 	counter int
-	tasks   map[string]*Task
+	tasks   map[string]*BackgroundTask
 	results map[string]string
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		tasks:   make(map[string]*Task, 0),
+		tasks:   make(map[string]*BackgroundTask, 0),
 		results: make(map[string]string, 0),
 	}
 }
-
-var BG = NewManager()
 
 func IsSlowOperation(toolName string, input map[string]any) bool {
 	if toolName != "bash" {
@@ -81,7 +79,7 @@ func (m *Manager) Start(toolUseID string, toolName string, input map[string]any,
 		command = cmd
 	}
 
-	m.tasks[bgID] = &Task{
+	m.tasks[bgID] = &BackgroundTask{
 		ID:        bgID,
 		ToolUseID: toolUseID,
 		Command:   command,

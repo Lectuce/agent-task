@@ -9,12 +9,14 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-var WORKDIR string
+var WORKDIR = initWorkDir()
 var SKILLSDIR = WORKDIR + "/.skills"
 var TOOL_RESULTS_DIR = WORKDIR + "/.task_outputs/tool-results"
 var TRANSCRIPT_DIR = WORKDIR + "/.transcripts"
 var MEMORY_DIR = WORKDIR + "/.memory"
 var MEMORY_INDEX = MEMORY_DIR + "/MEMORY.md"
+var TASKS_DIR = WORKDIR + "/.tasks"
+var DURABLE_PATH = WORKDIR + "/.cron"
 
 const (
 	KEEP_RECENT_TOOL_RESULTS = 3
@@ -53,7 +55,7 @@ func envInt64(key string, def int64) int64 {
 var DEFAULT_MAX_TOOKENS = envInt64("DEFAULT_MAX_TOOKENS", 8000)
 var ESCALATED_MAX_TOKENS = envInt64("ESCALATED_MAX_TOKENS", 64000)
 
-var DEFAULT_COMPACT_TOOKENS = envInt64("DEFAULT_COMPACT_TOOKENS", 64000)
+var DEFAULT_COMPACT_TOOKENS = envInt64("DEFAULT_COMPACT_TOOKENS", 8000)
 var DEFAULT_MEMORY_TOOKENS = envInt64("DEFAULT_COMPACT_TOOKENS", 200)
 
 var SUBSYSTEM = []anthropic.TextBlockParam{

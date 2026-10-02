@@ -22,3 +22,25 @@ func CloneMessages(messages []anthropic.MessageParam) ([]anthropic.MessageParam,
 
 	return cloned, nil
 }
+
+func AppendMessage(history []anthropic.MessageParam, requestMessages []anthropic.MessageParam, message anthropic.MessageParam) ([]anthropic.MessageParam, []anthropic.MessageParam, error) {
+
+	history = append(history, message)
+
+	cloned, err := CloneMessages(
+		[]anthropic.MessageParam{
+			message,
+		},
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	requestMessages = append(
+		requestMessages,
+		cloned[0],
+	)
+
+	return history, requestMessages, nil
+
+}
