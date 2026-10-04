@@ -8,6 +8,7 @@ import (
 	"agent/prompt"
 	"agent/session"
 	"agent/skills"
+	"agent/teams"
 	"agent/tool"
 	"context"
 	"fmt"
@@ -31,12 +32,19 @@ func main() {
 		fmt.Println(err.Error())
 		return
 	}
-	ctx := context.Background()
+
+	bus, err := teams.NewMessageBus()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	teams.SetMessageBus(bus)
+
 	cronManager := cron.NewManager(config.DURABLE_PATH)
 	err = cronManager.LoadDurableJobs()
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+
 	tool.SetCronManager(cronManager)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

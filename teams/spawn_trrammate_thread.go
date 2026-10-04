@@ -13,9 +13,9 @@ import (
 var activeTeammate = map[string]bool{}
 
 func SpawnTeammateThread(name string, role string, prompt string) (string, error) {
-	teammate, ok := activeTeammate[name]
+	_, ok := activeTeammate[name]
 	if ok {
-		return "", fmt.Errorf("Teammate %v already exists.", teammate)
+		return "", fmt.Errorf("Teammate %v already exists.", name)
 	}
 
 	system := []anthropic.TextBlockParam{
@@ -129,13 +129,13 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 		for range 10 {
 			inbox, err := BUS.ReadInbox(name)
 			if err != nil {
-				fmt.Println(error.Error(err))
+				fmt.Println(err.Error())
 				return
 			}
 			if len(inbox) > 0 {
 				rawdata, err := json.Marshal(inbox)
 				if err != nil {
-					fmt.Println(error.Error(err))
+					fmt.Println(err.Error())
 					return
 				}
 				data := string(rawdata)
@@ -169,7 +169,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				10,
 			)
 			if err != nil {
-				fmt.Println(error.Error(err))
+				fmt.Println(err.Error())
 				return
 			}
 
@@ -199,12 +199,12 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					var input map[string]any
 					err := json.Unmarshal(block.Input, &input)
 					if err != nil {
-						fmt.Println(error.Error(err))
+						fmt.Println(err.Error())
 						return
 					}
 					output, err := handler(input)
 					if err != nil {
-						fmt.Println(error.Error(err))
+						fmt.Println(err.Error())
 						return
 					}
 					results = append(results, anthropic.NewToolResultBlock(

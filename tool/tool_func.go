@@ -18,7 +18,10 @@ import (
 
 func runBash(input map[string]any) (string, error) {
 	// command string
-	command := input["command"].(string)
+	command, ok := input["command"].(string)
+	if !ok || command == "" {
+		return "", fmt.Errorf("command is required")
+	}
 	dangerous := []string{"rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"}
 	for _, danger := range dangerous {
 		if strings.Contains(command, danger) {
