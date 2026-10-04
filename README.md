@@ -2,7 +2,7 @@
 
 一个使用 Go 实现的最小可用 Agent。
 
-参考Claude Code 实现思路，包括Tool Use、Permission、Hooks、Todo Write、Subagent、Skills、System Prompt、Error Recovery、Context Compact、Memory、Session 和 Log。
+包括Tool Use、Permission、Hooks、Todo Write、Subagent、Skills、System Prompt、Error Recovery、Context Compact、Memory、Session 和 Log。
 
 使用 anthropic-sdk-go 实现。
 
