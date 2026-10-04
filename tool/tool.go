@@ -284,6 +284,50 @@ var ClientTools = []anthropic.ToolParam{
 			Required: []string{"job_id"},
 		},
 	},
+	{
+		Name:        "spawn_teammate",
+		Description: anthropic.String("Spawn a teammate agent in a background thread."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+				"role": map[string]interface{}{
+					"type": "string",
+				},
+				"prompt": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			Required: []string{"name", "role", "prompt"},
+		},
+	},
+	{
+		Name:        "send_message",
+		Description: anthropic.String("Send a message to a teammate via MessageBus."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"to": map[string]interface{}{
+					"type": "string",
+					"content": map[string]interface{}{
+						"type": "string",
+					},
+				},
+			},
+			Required: []string{"to", "content"},
+		},
+	},
+	{
+		Name:        "check_inbox",
+		Description: anthropic.String("Check Lead's inbox for teammate messages."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type:       "object",
+			Properties: map[string]interface{}{},
+			Required:   []string{},
+		},
+	},
 }
 
 var ServerTools = []anthropic.ToolUnionParam{

@@ -6,8 +6,8 @@ import (
 )
 
 type Todo struct {
-	Content string
-	Status  string
+	Content string `json:"content"`
+	Status  string `json:"status"`
 }
 
 var CurrentTodos = []Todo{}

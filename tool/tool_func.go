@@ -4,6 +4,7 @@ import (
 	"agent/config"
 	"agent/skills"
 	"agent/task"
+	"agent/teams"
 	"context"
 	"fmt"
 	"os"
@@ -367,5 +368,63 @@ func runCancleCron(input map[string]any) (string, error) {
 		return "", fmt.Errorf("job_id is required")
 	}
 	return CronManager.CancelJob(jobID)
+
+}
+
+func runSpawnTeammate(input map[string]any) (string, error) {
+	name, ok := input["name"].(string)
+	if !ok || name == "" {
+		return "", fmt.Errorf("name is required.")
+	}
+	role, ok := input["role"].(string)
+	if !ok || role == "" {
+		return "", fmt.Errorf("role is required.")
+	}
+	pompt, ok := input["pompt"].(string)
+	if !ok || pompt == "" {
+		return "", fmt.Errorf("pompt is required.")
+	}
+	return teams.SpawnTeammateThread(name, role, pompt)
+}
+
+func runSendMessage(input map[string]any) (string, error) {
+	// to string, content string
+
+	to, ok := input["to"].(string)
+	if !ok || to == "" {
+		return "", fmt.Errorf("to is required.")
+	}
+	content, ok := input["content"]
+	if !ok {
+		return "", fmt.Errorf("content is required.")
+	}
+	content, ok = content.(string)
+	if !ok {
+		return "", fmt.Errorf("content is not string type")
+	}
+	MessageBus.Send("lead", to, content.(string), "string")
+
+	return fmt.Sprintf("send to %v", to), nil
+}
+
+func runCheckInbox(input map[string]any) (string, error) {
+	msgs, err := MessageBus.ReadInbox("lead")
+	if err != nil {
+		return "", err
+	}
+	if len(msgs) == 0 {
+		return "", fmt.Errorf("(inbox empty)")
+	}
+	lines := make([]string, 0)
+
+	for _, m := range msgs {
+		preview := m.Content
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		lines = append(lines, fmt.Sprintf("  [%v] %v"), m.From, preview)
+	}
+	result := strings.Join(lines, "\n")
+	return result, nil
 
 }

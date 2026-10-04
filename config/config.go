@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -10,13 +11,14 @@ import (
 )
 
 var WORKDIR = initWorkDir()
-var SKILLSDIR = WORKDIR + "/.skills"
-var TOOL_RESULTS_DIR = WORKDIR + "/.task_outputs/tool-results"
-var TRANSCRIPT_DIR = WORKDIR + "/.transcripts"
-var MEMORY_DIR = WORKDIR + "/.memory"
-var MEMORY_INDEX = MEMORY_DIR + "/MEMORY.md"
-var TASKS_DIR = WORKDIR + "/.tasks"
-var DURABLE_PATH = WORKDIR + "/.cron"
+var SKILLSDIR = filepath.Join(WORKDIR, ".skills")
+var TOOL_RESULTS_DIR = filepath.Join(WORKDIR, ".task_outputs", "tool-results")
+var TRANSCRIPT_DIR = filepath.Join(WORKDIR, ".transcripts")
+var MEMORY_DIR = filepath.Join(WORKDIR, ".memory")
+var MEMORY_INDEX = filepath.Join(MEMORY_DIR, "MEMORY.md")
+var TASKS_DIR = filepath.Join(WORKDIR, ".tasks")
+var DURABLE_PATH = filepath.Join(WORKDIR, ".cron")
+var MAILBOX_DIR = filepath.Join(WORKDIR, ".mailboxes")
 
 const (
 	KEEP_RECENT_TOOL_RESULTS = 3
