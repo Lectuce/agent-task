@@ -102,3 +102,28 @@ func (m *MessageBus) ReadInbox(agent string) ([]message, error) {
 	}
 	return msgs, nil
 }
+
+func (m *MessageBus) DrainInboxText(agent string) (string, int, error) {
+	msgs, err := m.ReadInbox(agent)
+	if err != nil {
+		return "", 0, err
+	}
+	if len(msgs) == 0 {
+		return "", 0, nil
+	}
+
+	lines := make([]string, 0, len(msgs))
+
+	for _, msg := range msgs {
+		preview := msg.Content
+
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+
+		lines = append(lines, fmt.Sprintf("From %v: %v", msg.From, preview))
+
+	}
+	return "[Inbox]\n" + strings.Join(lines, "\n"), len(msgs), nil
+
+}

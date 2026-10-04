@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/chzyer/readline"
 )
 
@@ -86,8 +87,34 @@ func main() {
 		loop.AgentLock.Lock()
 		err = func() error {
 			defer loop.AgentLock.Unlock()
-			return loop.AgentLoop(query, ctx, promptContext, sessionManager.CurrentSession(), cronManager)
+
+			currentSession := sessionManager.CurrentSession()
+
+			err := loop.AgentLoop(query, ctx, promptContext, currentSession, cronManager)
+			if err != nil {
+				return err
+			}
+
+			inboxText, count, err := bus.DrainInboxText("lead")
+			if err != nil {
+				return fmt.Errorf("drain lead inbox: %v", err)
+			}
+			if inboxText != "" {
+				currentSession.Messages = append(currentSession.Messages,
+					anthropic.NewUserMessage(
+						anthropic.NewTextBlock(inboxText),
+					),
+				)
+			}
+
+			fmt.Printf("\n\033[33m[Inbox: %v messages injected]\033[0m\n", count)
+
+			return nil
 		}()
+
+		if err != nil {
+			fmt.Printf("[agent error] %v\n", err)
+		}
 	}
 
 }
