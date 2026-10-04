@@ -3,6 +3,7 @@ package cron
 import (
 	"fmt"
 	"math/rand"
+	"time"
 )
 
 func (m *Manager) ScheduleJob(cronExpr string, prompt string, recurring bool, durable bool) (*CronJob, error) {
@@ -72,4 +73,50 @@ func (m *Manager) ListJobs() []*CronJob {
 	}
 
 	return jobs
+}
+
+func (m *Manager) processJobs(now time.Time) {
+	m.mu.Lock()
+
+	minuteMarker := now.Format("2006-01-02 15:04")
+
+	for id, job := range m.jobs {
+
+		func() {
+			defer func() {
+				r := recover()
+				if r != nil {
+					fmt.Printf("[cron error] %s: %v\n", id, r)
+				}
+			}()
+
+			if !CronMatches(job.Cron, now) {
+				return
+			}
+
+			if m.lastFired[job.ID] == minuteMarker {
+				return
+			}
+
+			jobCopy := *job
+
+			m.queue = append(m.queue, &jobCopy)
+
+			m.lastFired[job.ID] = minuteMarker
+
+			fmt.Printf("[cron fire] %s -> %.40s\n", job.ID, job.Prompt)
+
+			if !job.Recurring {
+				delete(m.jobs, job.ID)
+
+				if job.Durable {
+					if err :=
+						m.saveDurableJobsLocked(); err != nil {
+						fmt.Printf("[cron save error] %v\n", err)
+					}
+				}
+			}
+		}()
+	}
+	m.mu.Unlock()
 }

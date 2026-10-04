@@ -323,7 +323,7 @@ func runScheduleCron(input map[string]any) (string, error) {
 	if ok {
 		recurring = v
 	}
-	durable := true
+	durable := false
 	u, ok := input["durable"].(bool)
 	if ok {
 		durable = u

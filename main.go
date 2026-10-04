@@ -11,6 +11,9 @@ import (
 	"agent/tool"
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/chzyer/readline"
 )
@@ -35,7 +38,10 @@ func main() {
 		fmt.Println(err.Error())
 	}
 	tool.SetCronManager(cronManager)
-	go cronManager.SchedulerLoop()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	go cronManager.SchedulerLoop(ctx)
 	go loop.QueueProcessorLoop(cronManager, ctx, promptContext, func() *session.Session {
 		return sessionManager.CurrentSession()
 	})

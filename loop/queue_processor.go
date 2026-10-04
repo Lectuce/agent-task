@@ -17,44 +17,53 @@ func QueueProcessorLoop(cronManager *cron.Manager, ctx context.Context, promptCt
 
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
 
-		if !cronManager.HasCronQueue() {
-			continue
-		}
+		select {
 
-		if !AgentLock.TryLock() {
-			continue
-		}
+		case <-ctx.Done():
+			return
 
-		func() {
-			defer AgentLock.Unlock()
-
+		case <-ticker.C:
 			if !cronManager.HasCronQueue() {
-				return
+				continue
 			}
 
-			fmt.Println("\n\033[35m" +
-				"[queue processor] delivering scheduled work" +
-				"\033[0m",
-			)
+			if !AgentLock.TryLock() {
+				continue
+			}
 
-			currentSession := getCurrentSession()
+			func() {
+				defer AgentLock.Unlock()
 
-			err := AgentLoop(
-				"",
-				ctx,
-				promptCtx,
-				currentSession,
-				cronManager,
-			)
+				if !cronManager.HasCronQueue() {
+					return
+				}
 
-			if err != nil {
-				fmt.Printf(
-					"[cron agent error] %v\n",
-					err,
+				fmt.Println("\n\033[35m" +
+					"[queue processor] delivering scheduled work" +
+					"\033[0m",
 				)
-			}
-		}()
+
+				currentSession := getCurrentSession()
+
+				err := AgentLoop(
+					"",
+					ctx,
+					promptCtx,
+					currentSession,
+					cronManager,
+				)
+
+				if err != nil {
+					fmt.Printf(
+						"[cron agent error] %v\n",
+						err,
+					)
+				}
+			}()
+		}
+
 	}
+
 }

@@ -22,6 +22,11 @@ var promptSections = map[string]string{
 	"workspace": fmt.Sprintf("Working directory: %v", config.WORKDIR),
 
 	"memory": "Relevant memories are injected below when available.",
+
+	"scheduling": "For scheduled tasks, always use schedule_cron. \n" +
+		"Never implement scheduling with detached shell processes,\n" +
+		"background shell loops, nohup, trailing &, Start-Process,\n" +
+		"or repeated sleep commands. ",
 }
 
 type PromptContext struct {
@@ -34,7 +39,7 @@ var lastContextKey string
 var lastPrompt string
 
 func assembleSystemPrompt(context PromptContext) string {
-	sections := []string{promptSections["identity"], promptSections["workspace"], promptSections["memory"]}
+	sections := []string{promptSections["identity"], promptSections["workspace"], promptSections["memory"], promptSections["scheduling"]}
 
 	toolNames := tool.ToolNames()
 
