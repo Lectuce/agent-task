@@ -20,7 +20,7 @@ var ToolHandlers = map[string]ToolHandler{
 	"list_crons":     runListCrons,
 	"cancel_cron":    runCancleCron,
 	"spawn_teammate": runSpawnTeammate,
-	"seand_message":  runSendMessage,
+	"send_message":   runSendMessage,
 	"check_inbox":    runCheckInbox,
 }
 
