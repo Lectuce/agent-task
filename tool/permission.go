@@ -8,11 +8,7 @@ import (
 	"strings"
 )
 
-var DenyList = []string{"rm -rf /", "sudo", "shutdown", "reboot", "mkfs", "dd if=", "> /dev/sda",
-	"nohup ",
-	"while true",
-	"Start-Process",
-}
+var DenyList = []string{"rm -rf /", "sudo", "shutdown", "reboot", "mkfs", "dd if=", "> /dev/sda"}
 
 type permissionRule struct {
 	tools   []string

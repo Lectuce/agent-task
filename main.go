@@ -74,8 +74,6 @@ func main() {
 		hook.TriggerHooks(hook.UserPromptSubmit, hookCtx)
 		query = hookCtx.Query
 
-		ctx := context.Background()
-
 		loop.AgentLock.Lock()
 		err = func() error {
 			defer loop.AgentLock.Unlock()

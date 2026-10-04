@@ -349,12 +349,17 @@ func runListCrons(input map[string]any) (string, error) {
 			tag = "recurring"
 		}
 
-		dur := "durable"
+		dur := "session"
 		if job.Durable {
-			dur = "session"
+			dur = "durable"
 		}
 
-		lines = append(lines, fmt.Sprintf("  %v: '%v' → %v [%v, %v]", job.ID, job.Cron, job.Prompt[:40], tag, dur))
+		preview := job.Prompt
+		if len(preview) > 40 {
+			preview = preview[:40]
+		}
+
+		lines = append(lines, fmt.Sprintf("  %v: '%v' → %v [%v, %v]", job.ID, job.Cron, preview, tag, dur))
 
 	}
 
@@ -422,7 +427,7 @@ func runCheckInbox(input map[string]any) (string, error) {
 		if len(preview) > 200 {
 			preview = preview[:200]
 		}
-		lines = append(lines, fmt.Sprintf("  [%v] %v"), m.From, preview)
+		lines = append(lines, fmt.Sprintf("  [%v] %v", m.From, preview))
 	}
 	result := strings.Join(lines, "\n")
 	return result, nil
