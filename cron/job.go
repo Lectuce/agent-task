@@ -42,15 +42,30 @@ func (m *Manager) CancelJob(jobID string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	job, ok := m.jobs[jobID]
-	if !ok {
-		return fmt.Sprintf("Job %s not found", jobID), nil
+	job, registered := m.jobs[jobID]
+
+	queued := false
+	remaining := make([]*CronJob, 0, len(m.queue))
+	for _, queueJob := range m.queue {
+		if queueJob.ID == jobID {
+			queued = true
+			continue
+		}
+		remaining = append(remaining, queueJob)
 	}
 
-	delete(m.jobs, jobID)
+	m.queue = remaining
+
+	if !registered && !queued {
+		return fmt.Sprintf("Job %s not found", jobID), nil
+	}
+	if registered {
+		delete(m.jobs, jobID)
+	}
+
 	delete(m.lastFired, jobID)
 
-	if job.Durable {
+	if registered && job.Durable {
 		if err := m.saveDurableJobsLocked(); err != nil {
 			return "", err
 		}
