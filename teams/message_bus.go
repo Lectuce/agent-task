@@ -50,6 +50,9 @@ func (m *MessageBus) Send(fromAgent string, toAgent string, content string, mess
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	f, err := os.OpenFile(inbox, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
 	_, err = f.Write(append(data, '\n'))
 	defer f.Close()
 

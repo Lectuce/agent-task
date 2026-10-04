@@ -38,6 +38,7 @@ func main() {
 		fmt.Println(err.Error())
 	}
 	teams.SetMessageBus(bus)
+	tool.SetMessageBus(bus)
 
 	cronManager := cron.NewManager(config.DURABLE_PATH)
 	err = cronManager.LoadDurableJobs()

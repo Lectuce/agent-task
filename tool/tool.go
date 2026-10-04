@@ -311,9 +311,9 @@ var ClientTools = []anthropic.ToolParam{
 			Properties: map[string]interface{}{
 				"to": map[string]interface{}{
 					"type": "string",
-					"content": map[string]interface{}{
-						"type": "string",
-					},
+				},
+				"content": map[string]interface{}{
+					"type": "string",
 				},
 			},
 			Required: []string{"to", "content"},

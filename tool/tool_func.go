@@ -388,11 +388,11 @@ func runSpawnTeammate(input map[string]any) (string, error) {
 	if !ok || role == "" {
 		return "", fmt.Errorf("role is required.")
 	}
-	pompt, ok := input["pompt"].(string)
-	if !ok || pompt == "" {
-		return "", fmt.Errorf("pompt is required.")
+	prompt, ok := input["prompt"].(string)
+	if !ok || prompt == "" {
+		return "", fmt.Errorf("prompt is required.")
 	}
-	return teams.SpawnTeammateThread(name, role, pompt)
+	return teams.SpawnTeammateThread(name, role, prompt)
 }
 
 func runSendMessage(input map[string]any) (string, error) {

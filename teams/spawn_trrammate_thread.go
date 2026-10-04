@@ -5,18 +5,27 @@ import (
 	"agent/recovery"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
-var activeTeammate = map[string]bool{}
+var (
+	activeMu       sync.Mutex
+	activeTeammate = map[string]bool{}
+)
 
 func SpawnTeammateThread(name string, role string, prompt string) (string, error) {
+
+	activeMu.Lock()
 	_, ok := activeTeammate[name]
 	if ok {
 		return "", fmt.Errorf("Teammate %v already exists.", name)
 	}
+	activeTeammate[name] = true
+	activeMu.Unlock()
 
 	system := []anthropic.TextBlockParam{
 		{
@@ -28,7 +37,6 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 			),
 		},
 	}
-	activeTeammate[name] = true
 
 	go func() {
 		ctx := context.Background()
@@ -119,7 +127,10 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				if !ok || content == "" {
 					return "", fmt.Errorf("content is required.")
 				}
-				BUS.Send(name, to, content, "message")
+				err := BUS.Send(name, to, content, "message")
+				if err != nil {
+					return "", err
+				}
 
 				return "Sent", nil
 			},
@@ -238,8 +249,15 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				break
 			}
 		}
-		BUS.Send(name, "lead", summary, "result")
+		err := BUS.Send(name, "lead", summary, "result")
+		if err != nil {
+			fmt.Println(errors.New("send eroor").Error())
+		}
+
+		activeMu.Lock()
 		delete(activeTeammate, name)
+		activeMu.Unlock()
+
 		fmt.Printf("  \033[32m[teammate] %v finished\033[0m\n", name)
 	}()
 
