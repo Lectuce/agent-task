@@ -2,6 +2,7 @@ package teams
 
 import (
 	"agent/config"
+	"agent/protocol"
 	"agent/recovery"
 	"context"
 	"encoding/json"
@@ -112,6 +113,22 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					Required: []string{"to", "content"},
 				},
 			},
+			{
+				Name:        "submit_plan",
+				Description: anthropic.String("Submit a plan for Lead approval."),
+				InputSchema: anthropic.ToolInputSchemaParam{
+					Type: "object",
+					Properties: map[string]interface{}{
+						"plan": map[string]interface{}{
+							"type": "string",
+						},
+						"content": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					Required: []string{"plan"},
+				},
+			},
 		}
 
 		var subHandlers = map[string]toolHandler{
@@ -127,12 +144,23 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				if !ok || content == "" {
 					return "", fmt.Errorf("content is required.")
 				}
-				err := BUS.Send(name, to, content, "message")
+				err := BUS.Send(name, to, content, "message", map[string]any{})
 				if err != nil {
 					return "", err
 				}
 
 				return "Sent", nil
+			},
+			"submit_plan": func(input map[string]any) (string, error) {
+				name, ok := input["name"].(string)
+				if !ok || name == "" {
+					return "", fmt.Errorf("name is required.")
+				}
+				plan, ok := input["plan"].(string)
+				if !ok || plan == "" {
+					return "", fmt.Errorf("plan is required.")
+				}
+				return teammateSubmitPlan(name, plan)
 			},
 		}
 		state := recovery.InitRecoveryState()
@@ -249,7 +277,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				break
 			}
 		}
-		err := BUS.Send(name, "lead", summary, "result")
+		err := BUS.Send(name, "lead", summary, "result", map[string]any{})
 		if err != nil {
 			fmt.Println(errors.New("send eroor").Error())
 		}
@@ -264,5 +292,27 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 	fmt.Printf("  \033[36m[teammate] %v spawned as %v\033[0m\n", name, role)
 
 	return fmt.Sprintf("Teammate '%v' spawned as %v\n", name, role), nil
+
+}
+
+func teammateSubmitPlan(fromName string, plan string) (string, error) {
+
+	requestID := protocol.NewRequestID()
+
+	protocol.PendingRequests[requestID] = &protocol.ProtocolState{
+		RequestID:      requestID,
+		ProtocolType:   protocol.PlanApproval,
+		Sender:         fromName,
+		Target:         "lead",
+		ProtocolStatus: protocol.Pending,
+		Payload:        plan,
+	}
+
+	err := BUS.Send(fromName, "lead", plan, protocol.PlanApprovalRequest, map[string]any{"request_id": requestID})
+	if err != nil {
+		return "", fmt.Errorf("send error: %v", err)
+	}
+
+	return fmt.Sprintf("Plan submitted (%v). Waiting for approval...\n", requestID), nil
 
 }

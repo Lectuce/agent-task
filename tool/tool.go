@@ -328,6 +328,55 @@ var ClientTools = []anthropic.ToolParam{
 			Required:   []string{},
 		},
 	},
+
+	{
+		Name:        "request_shutdown",
+		Description: anthropic.String("Request a teammate to shut down gracefully."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"type": "string",
+			},
+			Required: []string{"trammate"},
+		},
+	},
+
+	{
+		Name:        "request_plan",
+		Description: anthropic.String("Ask a teammate to submit a plan for review."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"teammate": map[string]interface{}{
+					"type": "string",
+				},
+				"task": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			Required: []string{"trammate", "task"},
+		},
+	},
+
+	{
+		Name:        "review_plan",
+		Description: anthropic.String("Approve or reject a submitted plan by request_id."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"request_id": map[string]interface{}{
+					"type": "string",
+				},
+				"approve": map[string]interface{}{
+					"type": "string",
+				},
+				"feedback": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			Required: []string{"request_id", "approve"},
+		},
+	},
 }
 
 var ServerTools = []anthropic.ToolUnionParam{

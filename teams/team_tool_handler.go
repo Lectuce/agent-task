@@ -133,7 +133,7 @@ func runSendMessage(input map[string]any) (string, error) {
 	if !ok || content == "" {
 		return "", fmt.Errorf("content is required.")
 	}
-	err := BUS.Send("lead", to, content, "message")
+	err := BUS.Send("lead", to, content, "message", map[string]any{})
 	if err != nil {
 		return "", err
 	}

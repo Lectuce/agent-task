@@ -2,6 +2,7 @@ package tool
 
 import (
 	"agent/config"
+	"agent/protocol"
 	"agent/skills"
 	"agent/task"
 	"agent/teams"
@@ -162,7 +163,7 @@ func safePath(input map[string]any) (string, error) {
 	return path, nil
 }
 
-func loadSkill(input map[string]any) (string, error) {
+func runloadSkill(input map[string]any) (string, error) {
 	name, ok := input["name"].(string)
 	if !ok || name == "" {
 		return "", fmt.Errorf("name is required")
@@ -410,7 +411,7 @@ func runSendMessage(input map[string]any) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("content is not string type")
 	}
-	MessageBus.Send("lead", to, content.(string), "string")
+	MessageBus.Send("lead", to, content.(string), "string", map[string]any{})
 
 	return fmt.Sprintf("send to %v", to), nil
 }
@@ -435,4 +436,29 @@ func runCheckInbox(input map[string]any) (string, error) {
 	result := strings.Join(lines, "\n")
 	return result, nil
 
+}
+
+func runRequestShudown(input map[string]any) (string, error) {
+	teammate, ok := input["teammate"].(string)
+	if !ok || teammate == "" {
+		return "", fmt.Errorf("teammate is required")
+	}
+
+	requestID := protocol.NewRequestID()
+
+	protocol.PendingRequests[requestID] = &protocol.ProtocolState{
+		RequestID:      requestID,
+		ProtocolType:   protocol.ShutDown,
+		Sender:         "lead",
+		Target:         teammate,
+		ProtocolStatus: protocol.Pending,
+		Payload:        "",
+	}
+
+	err := MessageBus.Send("lead", teammate, "Please shut down gracefully.", "shutdown_request", map[string]any{"request_id": requestID})
+	if err != nil {
+		return "", fmt.Errorf("send error: %v", err)
+	}
+
+	return fmt.Sprintf("Shutdown request sent to %v (req: %v)\n", teammate, requestID), nil
 }

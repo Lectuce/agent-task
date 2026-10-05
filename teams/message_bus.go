@@ -2,6 +2,7 @@ package teams
 
 import (
 	"agent/config"
+	"agent/protocol"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,11 +18,12 @@ type MessageBus struct {
 }
 
 type message struct {
-	From        string    `json:"from"`
-	To          string    `json:"to"`
-	Content     string    `json:"content"`
-	MessageType string    `json:"message_type"`
-	Ts          time.Time `json:"ts"`
+	From        string         `json:"from"`
+	To          string         `json:"to"`
+	Content     string         `json:"content"`
+	MessageType string         `json:"message_type"`
+	Ts          time.Time      `json:"ts"`
+	Metadata    map[string]any `json:"meta_data"`
 }
 
 func NewMessageBus() (*MessageBus, error) {
@@ -32,13 +34,14 @@ func NewMessageBus() (*MessageBus, error) {
 	return &MessageBus{}, err
 }
 
-func (m *MessageBus) Send(fromAgent string, toAgent string, content string, messageType string) error {
+func (m *MessageBus) Send(fromAgent string, toAgent string, content string, messageType string, metadata map[string]any) error {
 	message := message{
 		From:        fromAgent,
 		To:          toAgent,
 		Content:     content,
 		MessageType: messageType,
 		Ts:          time.Now(),
+		Metadata:    metadata,
 	}
 
 	inbox := filepath.Join(config.MAILBOX_DIR, toAgent+".jsonl")
@@ -126,4 +129,50 @@ func (m *MessageBus) DrainInboxText(agent string) (string, int, error) {
 	}
 	return "[Inbox]\n" + strings.Join(lines, "\n"), len(msgs), nil
 
+}
+
+func ConsumeLeadInbox(routeProtocol bool) ([]message, error) {
+
+	msgs, err := BUS.ReadInbox("lead")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(msgs) == 0 {
+		return nil, nil
+	}
+
+	if routeProtocol {
+		for _, msg := range msgs {
+
+			requestID := ""
+
+			if msg.Metadata != nil {
+				v, ok := msg.Metadata["request_id"].(string)
+				if ok {
+					requestID = v
+				}
+			}
+
+			if requestID == "" {
+				continue
+			}
+
+			if !strings.HasSuffix(msg.MessageType, "_response") {
+				continue
+			}
+
+			approve := false
+
+			if msg.Metadata != nil {
+				v, ok := msg.Metadata["approve"].(bool)
+				if ok {
+					approve = v
+				}
+			}
+			protocol.MatchResponse(msg.MessageType, requestID, approve)
+		}
+	}
+
+	return msgs, nil
 }
