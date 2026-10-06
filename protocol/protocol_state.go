@@ -15,6 +15,7 @@ const (
 
 // ResponseType
 const (
+	ShutDownRequest      = "shutdown_request"
 	ShutDownResponse     = "shutdown_response"
 	PlanApprovalResponse = "plan_approval_response"
 	PlanApprovalRequest  = "plan_approval_request"

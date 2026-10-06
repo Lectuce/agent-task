@@ -316,3 +316,56 @@ func teammateSubmitPlan(fromName string, plan string) (string, error) {
 	return fmt.Sprintf("Plan submitted (%v). Waiting for approval...\n", requestID), nil
 
 }
+
+func handleInboxMessage(name string, msg message, messages *[]anthropic.MessageParam) (bool, error) {
+	msgTyle := "message"
+	msgTyle = msg.MessageType
+
+	meta := msg.Metadata
+	requestID := ""
+	if msg.Metadata != nil {
+		v, ok := msg.Metadata["request_id"].(string)
+		if ok {
+			requestID = v
+		}
+	}
+
+	if msgTyle == protocol.ShutDownRequest {
+		err := BUS.Send(name, "lead", "Shutting down gracefully.",
+			protocol.ShutDownResponse, map[string]any{
+				"request_id": requestID,
+				"approve":    true,
+			},
+		)
+		if err != nil {
+			return false, err
+		}
+
+		fmt.Printf("  \033[35m[protocol] %v approved shutdown "+
+			"(%v)\033[0m",
+			name,
+			requestID,
+		)
+		return true, nil
+	}
+
+	if msgTyle == protocol.PlanApprovalResponse {
+		approve := false
+		approve = meta["approve"].(bool)
+		if approve {
+
+			*messages = append(*messages, anthropic.NewUserMessage(
+				anthropic.NewTextBlock("[Plan approved] Proceed with the task."),
+			))
+		} else {
+			*messages = append(*messages,
+				anthropic.NewUserMessage(
+					anthropic.NewTextBlock(fmt.Sprintf("[Plan rejected] Feedback: %v", msg.Content)),
+				),
+			)
+		}
+		return false, nil
+	}
+	return false, nil
+
+}
