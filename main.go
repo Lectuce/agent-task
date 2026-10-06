@@ -95,7 +95,7 @@ func main() {
 				return err
 			}
 
-			inboxText, count, err := bus.DrainInboxText("lead")
+			inboxText, count, err := teams.ConsumeLeadInboxText()
 			if err != nil {
 				return fmt.Errorf("drain lead inbox: %v", err)
 			}

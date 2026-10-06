@@ -526,6 +526,7 @@ func runReviewPlan(input map[string]any) (string, error) {
 	if approve {
 		status = protocol.Approved
 	}
+	state.ProtocolStatus = status
 
 	content := feedback
 	if content == "" {

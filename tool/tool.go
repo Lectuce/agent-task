@@ -335,7 +335,9 @@ var ClientTools = []anthropic.ToolParam{
 		InputSchema: anthropic.ToolInputSchemaParam{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"type": "string",
+				"teammate": map[string]interface{}{
+					"type": "string",
+				},
 			},
 			Required: []string{"teammate"},
 		},
@@ -368,7 +370,7 @@ var ClientTools = []anthropic.ToolParam{
 					"type": "string",
 				},
 				"approve": map[string]interface{}{
-					"type": "string",
+					"type": "boolean",
 				},
 				"feedback": map[string]interface{}{
 					"type": "string",

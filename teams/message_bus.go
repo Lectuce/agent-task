@@ -106,28 +106,52 @@ func (m *MessageBus) ReadInbox(agent string) ([]message, error) {
 	return msgs, nil
 }
 
-func (m *MessageBus) DrainInboxText(agent string) (string, int, error) {
-	msgs, err := m.ReadInbox(agent)
-	if err != nil {
-		return "", 0, err
-	}
+func FormatInboxText(msgs []message) (string, int) {
 	if len(msgs) == 0 {
-		return "", 0, nil
+		return "", 0
 	}
 
 	lines := make([]string, 0, len(msgs))
 
 	for _, msg := range msgs {
 		preview := msg.Content
-
 		if len(preview) > 200 {
 			preview = preview[:200]
 		}
 
-		lines = append(lines, fmt.Sprintf("From %v: %v", msg.From, preview))
+		requestID := ""
+		if msg.Metadata != nil {
+			requestID, _ = msg.Metadata["request_id"].(string)
+		}
 
+		tag := fmt.Sprintf("[%s]", msg.MessageType)
+		if requestID != "" {
+			tag = fmt.Sprintf(
+				"[%s req:%s]",
+				msg.MessageType,
+				requestID,
+			)
+		}
+
+		lines = append(lines, fmt.Sprintf(
+			"From %s %s: %s",
+			msg.From,
+			tag,
+			preview,
+		))
 	}
-	return "[Inbox]\n" + strings.Join(lines, "\n"), len(msgs), nil
+
+	return "[Inbox]\n" + strings.Join(lines, "\n"), len(msgs)
+}
+
+func ConsumeLeadInboxText() (string, int, error) {
+	msgs, err := ConsumeLeadInbox(true)
+	if err != nil {
+		return "", 0, err
+	}
+
+	text, count := FormatInboxText(msgs)
+	return text, count, nil
 
 }
 
