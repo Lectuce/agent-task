@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -164,26 +165,64 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 			},
 		}
 		state := recovery.InitRecoveryState()
+		shutDownRequested := false
 
-		for range 10 {
+		for !shutDownRequested {
 			inbox, err := BUS.ReadInbox(name)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
+
+			shouldStop := false
+			nonProtocol := make([]message, 0)
+			for _, msg := range inbox {
+				if msg.MessageType == protocol.ShutDownRequest || msg.MessageType == protocol.PlanApprovalResponse {
+					shouldStop, err = handleInboxMessage(name, msg, &messages)
+					if err != nil {
+						fmt.Println(err.Error())
+						return
+					}
+					if shouldStop {
+						break
+					}
+				} else {
+					nonProtocol = append(nonProtocol, msg)
+				}
 			}
-			if len(inbox) > 0 {
-				rawdata, err := json.Marshal(inbox)
+			if shouldStop {
+				shutDownRequested = true
+				break
+			}
+			if len(nonProtocol) == 0 {
+				inboxJson, err := json.Marshal(nonProtocol)
 				if err != nil {
-					fmt.Println(err.Error())
+					fmt.Printf("marshal error: %v\n", err)
 					return
 				}
-				data := string(rawdata)
 				messages = append(messages,
 					anthropic.NewUserMessage(
-						anthropic.NewTextBlock(fmt.Sprintf("<inbox>%v</inbox>", data)),
+						anthropic.NewTextBlock(
+							fmt.Sprintf("<inbox>%v"+
+								"</inbox>", inboxJson,
+							)),
 					),
 				)
+
 			}
+			// if err != nil {
+			// 	fmt.Println(err.Error())
+			// 	return
+			// }
+			// if len(inbox) > 0 {
+			// 	rawdata, err := json.Marshal(inbox)
+			// 	if err != nil {
+			// 		fmt.Println(err.Error())
+			// 		return
+			// 	}
+			// 	data := string(rawdata)
+			// 	messages = append(messages,
+			// 		anthropic.NewUserMessage(
+			// 			anthropic.NewTextBlock(fmt.Sprintf("<inbox>%v</inbox>", data)),
+			// 		),
+			// 	)
+			// }
 
 			requestMessage := messages
 			if len(requestMessage) > 20 {
@@ -216,7 +255,52 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				response.ToParam().Content...,
 			))
 			if response.StopReason != anthropic.StopReasonToolUse {
-				break
+				for !shutDownRequested {
+					time.Sleep(1 * time.Second)
+					inbox, err := BUS.ReadInbox(name)
+					if err != nil {
+						fmt.Printf("read inbox error: %v\n", err)
+					}
+					if len(inbox) == 0 {
+						continue
+					}
+					for _, msg := range inbox {
+						if msg.MessageType == protocol.ShutDownRequest || msg.MessageType == protocol.PlanApprovalResponse {
+							shouldStop, err := handleInboxMessage(name, msg, &messages)
+							if err != nil {
+								fmt.Printf("handle inbox error: %v\n", err)
+								return
+							}
+							if shouldStop {
+								shutDownRequested = true
+								break
+							}
+						} else {
+							nonProtocol = append(nonProtocol, msg)
+						}
+					}
+					if shutDownRequested {
+						break
+					}
+					if len(nonProtocol) == 0 {
+						inboxJson, err := json.Marshal(nonProtocol)
+						if err != nil {
+							fmt.Printf("marshall error: %v\n", err)
+							return
+						}
+						messages = append(messages,
+							anthropic.NewUserMessage(
+								anthropic.NewTextBlock(
+									fmt.Sprintf("<inbox>%v"+
+										"</inbox>", inboxJson,
+									)),
+							),
+						)
+						break
+					}
+
+				}
+
 			}
 			results := make([]anthropic.ContentBlockParamUnion, 0)
 			for _, block := range response.Content {
@@ -318,8 +402,8 @@ func teammateSubmitPlan(fromName string, plan string) (string, error) {
 }
 
 func handleInboxMessage(name string, msg message, messages *[]anthropic.MessageParam) (bool, error) {
-	msgTyle := "message"
-	msgTyle = msg.MessageType
+	msgType := "message"
+	msgType = msg.MessageType
 
 	meta := msg.Metadata
 	requestID := ""
@@ -330,7 +414,7 @@ func handleInboxMessage(name string, msg message, messages *[]anthropic.MessageP
 		}
 	}
 
-	if msgTyle == protocol.ShutDownRequest {
+	if msgType == protocol.ShutDownRequest {
 		err := BUS.Send(name, "lead", "Shutting down gracefully.",
 			protocol.ShutDownResponse, map[string]any{
 				"request_id": requestID,
@@ -349,7 +433,7 @@ func handleInboxMessage(name string, msg message, messages *[]anthropic.MessageP
 		return true, nil
 	}
 
-	if msgTyle == protocol.PlanApprovalResponse {
+	if msgType == protocol.PlanApprovalResponse {
 		approve := false
 		approve = meta["approve"].(bool)
 		if approve {
