@@ -40,7 +40,7 @@ type ProtocolState struct {
 }
 
 var (
-	PendingRequests = map[string]*ProtocolState{}
+	pendingRequests = map[string]*ProtocolState{}
 	pendingMu       sync.RWMutex
 )
 
@@ -48,14 +48,14 @@ func AddPendingRequests(state *ProtocolState) {
 	pendingMu.Lock()
 	defer pendingMu.Unlock()
 
-	PendingRequests[state.RequestID] = state
+	pendingRequests[state.RequestID] = state
 }
 
 func GetPendingRequest(requestID string) (*ProtocolState, bool) {
 	pendingMu.RLock()
 	defer pendingMu.RUnlock()
 
-	state, ok := PendingRequests[requestID]
+	state, ok := pendingRequests[requestID]
 	return state, ok
 }
 

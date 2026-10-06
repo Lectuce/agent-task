@@ -446,14 +446,14 @@ func runRequestShudown(input map[string]any) (string, error) {
 
 	requestID := protocol.NewRequestID()
 
-	protocol.PendingRequests[requestID] = &protocol.ProtocolState{
+	protocol.AddPendingRequests(&protocol.ProtocolState{
 		RequestID:      requestID,
 		ProtocolType:   protocol.ShutDown,
 		Sender:         "lead",
 		Target:         teammate,
 		ProtocolStatus: protocol.Pending,
 		Payload:        "",
-	}
+	})
 
 	err := MessageBus.Send("lead", teammate, "Please shut down gracefully.", "shutdown_request", map[string]any{"request_id": requestID})
 	if err != nil {
@@ -510,12 +510,16 @@ func runReviewPlan(input map[string]any) (string, error) {
 		feedback = v
 	}
 
-	state := protocol.PendingRequests[requestID]
-	if state == nil {
-		return "", fmt.Errorf("Request %v is not found", requestID)
+	state, ok := protocol.GetPendingRequest(requestID)
+	if !ok || state == nil {
+		return "", fmt.Errorf("request %v not found", requestID)
 	}
+	state.Mu.Lock()
+	defer state.Mu.Unlock()
+
 	if state.ProtocolStatus != protocol.Pending {
-		return "", fmt.Errorf("Request %v already %v", requestID, state.ProtocolStatus)
+		status := state.ProtocolStatus
+		return "", fmt.Errorf("Request %v already %v", requestID, status)
 	}
 
 	if approve {
@@ -533,9 +537,10 @@ func runReviewPlan(input map[string]any) (string, error) {
 		}
 	}
 
+	sender := state.Sender
 	err := MessageBus.Send(
 		"lead",
-		state.Sender,
+		sender,
 		content,
 		protocol.PlanApprovalResponse,
 		map[string]any{
