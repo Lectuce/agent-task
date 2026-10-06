@@ -89,6 +89,7 @@ func MatchResponse(responseType string, requestID string, approve bool) {
 	if state.ProtocolType == PlanApproval && responseType != PlanApprovalResponse {
 		fmt.Printf("  \033[31m[protocol] type mismatch: expected plan_approval_response, "+
 			"got %v\033[0m", responseType)
+		return
 	}
 
 	if state.ProtocolStatus != Pending {

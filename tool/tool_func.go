@@ -515,17 +515,16 @@ func runReviewPlan(input map[string]any) (string, error) {
 		return "", fmt.Errorf("request %v not found", requestID)
 	}
 	state.Mu.Lock()
-	defer state.Mu.Unlock()
 
 	if state.ProtocolStatus != protocol.Pending {
 		status := state.ProtocolStatus
+		state.Mu.Unlock()
 		return "", fmt.Errorf("Request %v already %v", requestID, status)
 	}
 
+	status := protocol.Rejected
 	if approve {
-		state.ProtocolStatus = protocol.Approved
-	} else {
-		state.ProtocolStatus = protocol.Rejected
+		status = protocol.Approved
 	}
 
 	content := feedback
@@ -538,6 +537,8 @@ func runReviewPlan(input map[string]any) (string, error) {
 	}
 
 	sender := state.Sender
+	state.Mu.Unlock()
+
 	err := MessageBus.Send(
 		"lead",
 		sender,
@@ -555,11 +556,6 @@ func runReviewPlan(input map[string]any) (string, error) {
 	icon := "✗"
 	if approve {
 		icon = "✓"
-	}
-
-	status := protocol.Rejected
-	if approve {
-		status = protocol.Approved
 	}
 
 	fmt.Printf("  \033[32m[protocol] plan %v (%v)\033[0m\n", icon, requestID)
