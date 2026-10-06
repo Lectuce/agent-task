@@ -417,24 +417,15 @@ func runSendMessage(input map[string]any) (string, error) {
 }
 
 func runCheckInbox(input map[string]any) (string, error) {
-	msgs, err := MessageBus.ReadInbox("lead")
+	text, count, err := teams.ConsumeLeadInboxText()
 	if err != nil {
 		return "", err
 	}
-	if len(msgs) == 0 {
+	if count == 0 {
 		return "", fmt.Errorf("(inbox empty)")
 	}
-	lines := make([]string, 0)
 
-	for _, m := range msgs {
-		preview := m.Content
-		if len(preview) > 200 {
-			preview = preview[:200]
-		}
-		lines = append(lines, fmt.Sprintf("  [%v] %v", m.From, preview))
-	}
-	result := strings.Join(lines, "\n")
-	return result, nil
+	return text, nil
 
 }
 

@@ -260,6 +260,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					if len(inbox) == 0 {
 						continue
 					}
+					resumeWork := false
 					for _, msg := range inbox {
 						if msg.MessageType == protocol.ShutDownRequest || msg.MessageType == protocol.PlanApprovalResponse {
 							shouldStop, err := handleInboxMessage(name, msg, &messages)
@@ -271,6 +272,11 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 								shutDownRequested = true
 								break
 							}
+
+							if msg.MessageType == protocol.PlanApprovalResponse {
+								resumeWork = true
+							}
+
 						} else {
 							nonProtocol = append(nonProtocol, msg)
 						}
@@ -278,6 +284,11 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					if shutDownRequested {
 						break
 					}
+
+					if resumeWork {
+						break
+					}
+
 					if len(nonProtocol) > 0 {
 						inboxJson, err := json.Marshal(nonProtocol)
 						if err != nil {

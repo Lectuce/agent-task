@@ -49,6 +49,7 @@ func AddPendingRequests(state *ProtocolState) {
 	defer pendingMu.Unlock()
 
 	pendingRequests[state.RequestID] = state
+	state.CreatedAt = time.Now()
 }
 
 func GetPendingRequest(requestID string) (*ProtocolState, bool) {
