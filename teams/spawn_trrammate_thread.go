@@ -22,12 +22,12 @@ var (
 func SpawnTeammateThread(name string, role string, prompt string) (string, error) {
 
 	activeMu.Lock()
+	defer activeMu.Unlock()
 	_, ok := activeTeammate[name]
 	if ok {
 		return "", fmt.Errorf("Teammate %v already exists.", name)
 	}
 	activeTeammate[name] = true
-	activeMu.Unlock()
 
 	system := []anthropic.TextBlockParam{
 		{
