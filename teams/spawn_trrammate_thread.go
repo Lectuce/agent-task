@@ -307,6 +307,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					}
 
 				}
+				continue
 
 			}
 			results := make([]anthropic.ContentBlockParamUnion, 0)
