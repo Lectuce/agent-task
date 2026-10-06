@@ -153,10 +153,6 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				return "Sent", nil
 			},
 			"submit_plan": func(input map[string]any) (string, error) {
-				name, ok := input["name"].(string)
-				if !ok || name == "" {
-					return "", fmt.Errorf("name is required.")
-				}
 				plan, ok := input["plan"].(string)
 				if !ok || plan == "" {
 					return "", fmt.Errorf("plan is required.")
@@ -190,7 +186,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				shutDownRequested = true
 				break
 			}
-			if len(nonProtocol) == 0 {
+			if len(nonProtocol) > 0 {
 				inboxJson, err := json.Marshal(nonProtocol)
 				if err != nil {
 					fmt.Printf("marshal error: %v\n", err)
@@ -282,7 +278,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					if shutDownRequested {
 						break
 					}
-					if len(nonProtocol) == 0 {
+					if len(nonProtocol) > 0 {
 						inboxJson, err := json.Marshal(nonProtocol)
 						if err != nil {
 							fmt.Printf("marshall error: %v\n", err)
@@ -383,14 +379,14 @@ func teammateSubmitPlan(fromName string, plan string) (string, error) {
 
 	requestID := protocol.NewRequestID()
 
-	protocol.PendingRequests[requestID] = &protocol.ProtocolState{
+	protocol.AddPendingRequests(&protocol.ProtocolState{
 		RequestID:      requestID,
 		ProtocolType:   protocol.PlanApproval,
 		Sender:         fromName,
 		Target:         "lead",
 		ProtocolStatus: protocol.Pending,
 		Payload:        plan,
-	}
+	})
 
 	err := BUS.Send(fromName, "lead", plan, protocol.PlanApprovalRequest, map[string]any{"request_id": requestID})
 	if err != nil {

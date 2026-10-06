@@ -39,7 +39,25 @@ type ProtocolState struct {
 	Mu             sync.Mutex
 }
 
-var PendingRequests = map[string]*ProtocolState{}
+var (
+	PendingRequests = map[string]*ProtocolState{}
+	pendingMu       sync.RWMutex
+)
+
+func AddPendingRequests(state *ProtocolState) {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+
+	PendingRequests[state.RequestID] = state
+}
+
+func GetPendingRequest(requestID string) (*ProtocolState, bool) {
+	pendingMu.RLock()
+	defer pendingMu.RUnlock()
+
+	state, ok := PendingRequests[requestID]
+	return state, ok
+}
 
 func NewRequestID() string {
 	return fmt.Sprintf("req_%06d", rand.Intn(1000000))
@@ -47,7 +65,14 @@ func NewRequestID() string {
 
 func MatchResponse(responseType string, requestID string, approve bool) {
 
-	state := PendingRequests[requestID]
+	state, ok := GetPendingRequest(requestID)
+	if !ok {
+		fmt.Printf("[protocol] unknown request_id: %s\n", requestID)
+		return
+	}
+
+	state.Mu.Lock()
+	defer state.Mu.Unlock()
 
 	if state == nil {
 		fmt.Printf("  \033[31m[protocol] unknown request_id: %v\033[0m\n", requestID)
@@ -61,7 +86,7 @@ func MatchResponse(responseType string, requestID string, approve bool) {
 		return
 	}
 
-	if state.ProtocolStatus == PlanApproval && responseType != PlanApprovalResponse {
+	if state.ProtocolType == PlanApproval && responseType != PlanApprovalResponse {
 		fmt.Printf("  \033[31m[protocol] type mismatch: expected plan_approval_response, "+
 			"got %v\033[0m", responseType)
 	}

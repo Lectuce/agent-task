@@ -337,7 +337,7 @@ var ClientTools = []anthropic.ToolParam{
 			Properties: map[string]interface{}{
 				"type": "string",
 			},
-			Required: []string{"trammate"},
+			Required: []string{"teammate"},
 		},
 	},
 
@@ -354,7 +354,7 @@ var ClientTools = []anthropic.ToolParam{
 					"type": "string",
 				},
 			},
-			Required: []string{"trammate", "task"},
+			Required: []string{"teammate", "task"},
 		},
 	},
 
