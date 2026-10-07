@@ -31,6 +31,8 @@ const (
 	TOOL_RESULT_MAX_BYTES    = 200000
 	MAX_MESSAGES             = 50
 	MAX_AGENT_ROUNDS         = 20
+	IDLE_POLL_INTERVAL       = 5
+	IDLE_TIMEOUT             = 60
 )
 
 var Client = anthropic.NewClient(
