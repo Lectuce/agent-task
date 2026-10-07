@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -31,8 +32,8 @@ const (
 	TOOL_RESULT_MAX_BYTES    = 200000
 	MAX_MESSAGES             = 50
 	MAX_AGENT_ROUNDS         = 20
-	IDLE_POLL_INTERVAL       = 5
-	IDLE_TIMEOUT             = 60
+	IDLE_POLL_INTERVAL       = 5 * time.Second
+	IDLE_TIMEOUT             = 60 * time.Second
 )
 
 var Client = anthropic.NewClient(

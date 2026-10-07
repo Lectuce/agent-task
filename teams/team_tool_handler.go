@@ -2,6 +2,7 @@ package teams
 
 import (
 	"agent/config"
+	"agent/task"
 	"context"
 	"fmt"
 	"os"
@@ -138,6 +139,49 @@ func runSendMessage(input map[string]any) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("send to %v", to), nil
+}
+
+func runListTasks(input map[string]any) (string, error) {
+	tasks, err := task.ListTasks()
+	if err != nil {
+		return "", err
+	}
+
+	if len(tasks) == 0 {
+		return "No tasks.", nil
+	}
+
+	result := ""
+	for _, t := range tasks {
+		result += "\n" + fmt.Sprintf("  %v: %v [%v]", t.ID, t.Subject, t.Status)
+	}
+
+	return result, nil
+
+}
+
+func runClaimTask(input map[string]any) (string, error) {
+
+	taskID, ok := input["task_id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("task_id is required.")
+	}
+	owner, ok := input["owner"].(string)
+	if !ok || owner == "" {
+		return "", fmt.Errorf("owner is required.")
+	}
+
+	return task.ClaimTask(taskID, owner)
+}
+
+func runCompleteTask(input map[string]any) (string, error) {
+	taskID, ok := input["task_id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("task_id is required.")
+	}
+
+	return task.CompleteTask(taskID)
+
 }
 
 func buildTools(subTools []anthropic.ToolParam) []anthropic.ToolUnionParam {

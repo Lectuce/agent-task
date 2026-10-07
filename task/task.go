@@ -19,6 +19,7 @@ type Task struct {
 	BlockedBy   []string // 当前任务依赖哪些其他任务
 }
 
+// Status
 const (
 	StatusPending    = "pending"
 	StatusInProgress = "in_progress"

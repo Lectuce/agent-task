@@ -130,6 +130,42 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 					Required: []string{"plan"},
 				},
 			},
+
+			{
+				Name:        "list_tasks",
+				Description: anthropic.String("List all tasks on the board."),
+				InputSchema: anthropic.ToolInputSchemaParam{
+					Type:       "object",
+					Properties: map[string]interface{}{},
+					Required:   []string{},
+				},
+			},
+			{
+				Name:        "claim_task",
+				Description: anthropic.String("Claim a pending task."),
+				InputSchema: anthropic.ToolInputSchemaParam{
+					Type: "object",
+					Properties: map[string]interface{}{
+						"task_id": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					Required: []string{"task_id"},
+				},
+			},
+			{
+				Name:        "complete_task",
+				Description: anthropic.String("Mark an in-progress task as completed."),
+				InputSchema: anthropic.ToolInputSchemaParam{
+					Type: "object",
+					Properties: map[string]interface{}{
+						"task_id": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					Required: []string{"task_id"},
+				},
+			},
 		}
 
 		var subHandlers = map[string]toolHandler{
@@ -159,6 +195,10 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				}
 				return teammateSubmitPlan(name, plan)
 			},
+
+			"list_tasks":    runListTasks,
+			"claim_task":    runClaimTask,
+			"complete_task": runCompleteTask,
 		}
 		state := recovery.InitRecoveryState()
 		shutDownRequested := false
