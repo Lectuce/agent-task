@@ -49,7 +49,7 @@ func scanUnclaimedTasks() ([]task.Task, error) {
 	return unclaim, nil
 }
 
-func idlePoll(agentName string, messages []anthropic.MessageParam, name string, role string) (string, error) {
+func idlePoll(agentName string, messages *[]anthropic.MessageParam, name string, role string) (string, error) {
 
 	for range config.IDLE_TIMEOUT / config.IDLE_POLL_INTERVAL {
 
@@ -70,7 +70,7 @@ func idlePoll(agentName string, messages []anthropic.MessageParam, name string, 
 					requestID := ""
 					if metadata != nil {
 						v, ok := msg.Metadata["request_id"].(string)
-						if !ok {
+						if ok {
 							requestID = v
 						}
 					}
@@ -93,7 +93,7 @@ func idlePoll(agentName string, messages []anthropic.MessageParam, name string, 
 				if err != nil {
 					return "", err
 				}
-				messages = append(messages, anthropic.NewUserMessage(
+				*messages = append(*messages, anthropic.NewUserMessage(
 					anthropic.NewTextBlock("<inbox>"+
 						string(data)+"</inbox>",
 					),
@@ -101,38 +101,37 @@ func idlePoll(agentName string, messages []anthropic.MessageParam, name string, 
 				fmt.Printf("  \033[36m[idle] %v found inbox messages\033[0m\n", name)
 				return "work", nil
 			}
+		}
 
-			unclaim, err := scanUnclaimedTasks()
+		unclaim, err := scanUnclaimedTasks()
+		if err != nil {
+			return "", err
+		}
+		if len(unclaim) > 0 {
+
+			t := unclaim[0]
+			result, err := task.ClaimTask(t.ID, agentName)
 			if err != nil {
 				return "", err
 			}
-			if len(unclaim) > 0 {
-
-				t := unclaim[0]
-				result, err := task.ClaimTask(t.ID, agentName)
-				if err != nil {
-					return "", err
-				}
-				if strings.Contains(result, "Claim") {
-					messages = append(messages, anthropic.NewUserMessage(
-						anthropic.NewTextBlock(
-							fmt.Sprintf("<auto-claimed>Task %v: "+
-								"%v</auto-claimed>", t.ID, t.Subject,
-							),
+			if strings.Contains(result, "Claim") {
+				*messages = append(*messages, anthropic.NewUserMessage(
+					anthropic.NewTextBlock(
+						fmt.Sprintf("<auto-claimed>Task %v: "+
+							"%v</auto-claimed>", t.ID, t.Subject,
 						),
-					))
+					),
+				))
 
-					fmt.Printf("  \033[32m[idle] %v auto-claimed: "+
-						"%v\033[0m\n", name, t.Subject,
-					)
+				fmt.Printf("  \033[32m[idle] %v auto-claimed: "+
+					"%v\033[0m\n", name, t.Subject,
+				)
 
-					return "work", nil
-				}
-
-				fmt.Printf("  \033[33m[idle] %v claim failed: "+
-					"%v\033[0m", name, result)
+				return "work", nil
 			}
 
+			fmt.Printf("  \033[33m[idle] %v claim failed: "+
+				"%v\033[0m", name, result)
 		}
 	}
 	fmt.Printf("  \033[31m[idle] %v timeout (%v)\033[0m", name, config.IDLE_TIMEOUT)
