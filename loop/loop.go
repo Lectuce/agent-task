@@ -102,11 +102,11 @@ func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContex
 	if err != nil {
 		return err
 	}
-	memoryTurn := memory.FindUserTurn(requestMessages, triggerQuery)
+	// memoryTurn := memory.FindUserTurn(requestMessages, triggerQuery)
 
 	// 注入记忆
-	if memoriesContent != "" && memoryTurn >= 0 && memoryTurn < len(requestMessages) {
-		requestMessages = memory.InjectMemories(requestMessages, memoryTurn, memoriesContent)
+	if memoriesContent != "" {
+		requestMessages = memory.InjectMemories(requestMessages, len(requestMessages)-1, memoriesContent)
 	}
 
 	// loop
