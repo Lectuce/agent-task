@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,8 @@ type Task struct {
 	Owner       *string
 	BlockedBy   []string // 当前任务依赖哪些其他任务
 }
+
+var claimMu sync.Mutex
 
 // Status
 const (
@@ -157,24 +160,69 @@ func blockedDependencies(task *Task) ([]string, error) {
 
 }
 
+type ClaimResult struct {
+	Claimed bool
+	Task    *Task
+	Reason  string
+}
+
 // 领取任务
-func ClaimTask(taskID string, owner string) (string, error) {
+func TryClaimTask(taskID string, owner string) (ClaimResult, error) {
+
+	claimMu.Lock()
+	defer claimMu.Unlock()
+
+	if owner == "" {
+		return ClaimResult{}, fmt.Errorf("owner is required.")
+	}
+
 	task, err := LoadTask(taskID)
 	if err != nil {
-		return "", err
+		return ClaimResult{}, err
+	}
+
+	if task.Owner != nil {
+		return ClaimResult{
+			Claimed: false,
+			Task:    task,
+			Reason: fmt.Sprintf(
+				"Task %s already owned by %s",
+				taskID,
+				*task.Owner,
+			),
+		}, nil
 	}
 
 	if task.Status != StatusPending {
-		return fmt.Sprintf("Task %v is %v, cannot claim", taskID, task.Status), err
+		return ClaimResult{
+			Claimed: false,
+			Task:    task,
+			Reason: fmt.Sprintf(
+				"Task %s is %s, cannot claim",
+				taskID,
+				task.Status,
+			),
+		}, err
 	}
 
 	canStart, err := CanStart(taskID)
+	if err != nil {
+		return ClaimResult{}, err
+	}
 	if !canStart {
 		deps, err := blockedDependencies(task)
 		if err != nil {
-			return "", err
+			return ClaimResult{}, err
 		}
-		return fmt.Sprintf("Blocked by: %v", deps), nil
+		return ClaimResult{
+			Claimed: false,
+			Task:    task,
+			Reason: fmt.Sprintf(
+				"Task %s is blocked by: %v",
+				taskID,
+				deps,
+			),
+		}, nil
 	}
 
 	task.Owner = &owner
@@ -182,12 +230,31 @@ func ClaimTask(taskID string, owner string) (string, error) {
 
 	err = SaveTask(task)
 	if err != nil {
-		return "", err
+		return ClaimResult{}, err
 	}
+
+	reason := fmt.Sprintf("  \033[36m[claim] %s → in_progress (owner: %s)\033[0m\n", task.Subject, owner)
 
 	fmt.Printf("  \033[36m[claim] %s → in_progress (owner: %s)\033[0m\n", task.Subject, owner)
 
-	return fmt.Sprintf("Claimed %s (%s)", task.ID, task.Subject), nil
+	var result = ClaimResult{
+		Claimed: true,
+		Task:    task,
+		Reason:  reason,
+	}
+
+	return result, nil
+}
+
+func ClaimTask(taskID string, owner string) (string, error) {
+
+	result, err := TryClaimTask(taskID, owner)
+	if err != nil {
+		return "", err
+	}
+
+	return result.Reason, nil
+
 }
 
 func CompleteTask(taskID string) (string, error) {

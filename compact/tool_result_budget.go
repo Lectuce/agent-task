@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
+// 大结果落盘
 func ToolResultBudget(messages []anthropic.MessageParam, maxBytes int) []anthropic.MessageParam {
 	if len(messages) == 0 {
 		return messages

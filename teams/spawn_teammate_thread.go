@@ -4,6 +4,7 @@ import (
 	"agent/config"
 	"agent/protocol"
 	"agent/recovery"
+	"agent/task"
 	"context"
 	"encoding/json"
 	"errors"
@@ -195,8 +196,14 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				return teammateSubmitPlan(name, plan)
 			},
 
-			"list_tasks":    runListTasks,
-			"claim_task":    runClaimTask,
+			"list_tasks": runListTasks,
+			"claim_task": func(input map[string]any) (string, error) {
+				taskID, ok := input["task_id"].(string)
+				if !ok || taskID == "" {
+					return "", fmt.Errorf("task_id is required.")
+				}
+				return task.ClaimTask(taskID, name)
+			},
 			"complete_task": runCompleteTask,
 		}
 		state := recovery.InitRecoveryState()

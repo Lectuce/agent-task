@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -110,11 +109,11 @@ func idlePoll(agentName string, messages *[]anthropic.MessageParam, name string,
 		if len(unclaim) > 0 {
 
 			t := unclaim[0]
-			result, err := task.ClaimTask(t.ID, agentName)
+			result, err := task.TryClaimTask(t.ID, agentName)
 			if err != nil {
 				return "", err
 			}
-			if strings.Contains(result, "Claim") {
+			if result.Claimed {
 				*messages = append(*messages, anthropic.NewUserMessage(
 					anthropic.NewTextBlock(
 						fmt.Sprintf("<auto-claimed>Task %v: "+
