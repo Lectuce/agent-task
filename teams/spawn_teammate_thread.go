@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -291,63 +290,24 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				response.ToParam().Content...,
 			))
 			if response.StopReason != anthropic.StopReasonToolUse {
-				for !shutDownRequested {
-					time.Sleep(1 * time.Second)
-					inbox, err := BUS.ReadInbox(name)
-					if err != nil {
-						fmt.Printf("read inbox error: %v\n", err)
-					}
-					if len(inbox) == 0 {
-						continue
-					}
-					resumeWork := false
-					for _, msg := range inbox {
-						if msg.MessageType == protocol.ShutDownRequest || msg.MessageType == protocol.PlanApprovalResponse {
-							shouldStop, err := handleInboxMessage(name, msg, &messages)
-							if err != nil {
-								fmt.Printf("handle inbox error: %v\n", err)
-								return
-							}
-							if shouldStop {
-								shutDownRequested = true
-								break
-							}
+				idleResult, err := idlePoll(name, &messages, name, role)
+				if err != nil {
+					fmt.Printf("idle poll error: %v\n", err)
+					return
+				}
 
-							if msg.MessageType == protocol.PlanApprovalResponse {
-								resumeWork = true
-							}
+				switch idleResult {
+				case "work":
+					continue
+				case "shutdown", "timeout":
+					shutDownRequested = true
+					continue
 
-						} else {
-							nonProtocol = append(nonProtocol, msg)
-						}
-					}
-					if shutDownRequested {
-						break
-					}
-
-					if resumeWork {
-						break
-					}
-
-					if len(nonProtocol) > 0 {
-						inboxJson, err := json.Marshal(nonProtocol)
-						if err != nil {
-							fmt.Printf("marshall error: %v\n", err)
-							return
-						}
-						messages = append(messages,
-							anthropic.NewUserMessage(
-								anthropic.NewTextBlock(
-									fmt.Sprintf("<inbox>%v"+
-										"</inbox>", inboxJson,
-									)),
-							),
-						)
-						break
-					}
+				default:
+					fmt.Printf("unknown idle result: %s\n", idleResult)
+					return
 
 				}
-				continue
 
 			}
 			results := make([]anthropic.ContentBlockParamUnion, 0)
