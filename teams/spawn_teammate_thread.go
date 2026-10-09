@@ -41,6 +41,17 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 	}
 
 	go func() {
+		defer func() {
+			activeMu.Lock()
+			delete(activeTeammate, name)
+			activeMu.Unlock()
+
+			fmt.Printf(
+				"[teammate] %s finished\n",
+				name,
+			)
+		}()
+
 		ctx := context.Background()
 		messages := []anthropic.MessageParam{
 			anthropic.NewUserMessage(

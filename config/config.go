@@ -20,6 +20,7 @@ var MEMORY_INDEX = filepath.Join(MEMORY_DIR, "MEMORY.md")
 var TASKS_DIR = filepath.Join(WORKDIR, ".tasks")
 var DURABLE_PATH = filepath.Join(WORKDIR, ".cron")
 var MAILBOX_DIR = filepath.Join(WORKDIR, ".mailboxes")
+var WORKTREES_DIR = filepath.Join(WORKDIR, ".worktrees")
 
 const (
 	KEEP_RECENT_TOOL_RESULTS = 3

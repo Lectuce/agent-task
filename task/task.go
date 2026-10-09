@@ -13,11 +13,12 @@ import (
 
 type Task struct {
 	ID          string
-	Subject     string
+	Subject     string // 任务简短标题
 	Description string
 	Status      string
 	Owner       *string
 	BlockedBy   []string // 当前任务依赖哪些其他任务
+	Worktree    string
 }
 
 var claimMu sync.Mutex
