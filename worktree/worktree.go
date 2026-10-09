@@ -109,7 +109,7 @@ func logEvent(eventType string, workTreeName string, taskID string) error {
 		TaskID:       taskID,
 		Ts:           time.Now(),
 	}
-	eventsFile := filepath.Join(config.WORKTREES_DIR, "events.json")
+	eventsFile := filepath.Join(config.WORKTREES_DIR, "events.jsonl")
 	file, err := os.OpenFile(eventsFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
