@@ -196,9 +196,9 @@ func safePathAt(input map[string]any, cwd string) (string, error) {
 
 	var base string
 	if cwd == "" {
-		base = cwd
-	} else {
 		base = config.WORKDIR
+	} else {
+		base = cwd
 	}
 
 	if !ok {
@@ -234,7 +234,7 @@ func runBashAt(input map[string]any, cwd string) (string, error) {
 	)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, cwd)
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
 	if cwd == "" {
 		cmd.Dir = config.WORKDIR
 	} else {

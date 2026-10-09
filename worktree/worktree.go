@@ -30,6 +30,13 @@ const (
 	Keep   = "keep"
 )
 
+func init() {
+	_, err := initWorktreesDir()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
 func initWorktreesDir() (string, error) {
 	err := os.MkdirAll(config.WORKTREES_DIR, 0755)
 	if err != nil {
@@ -182,6 +189,12 @@ func countWorktreeChanges(path string) (int, int) {
 	fileCmd.Dir = path
 
 	fileOut, fileErr := fileCmd.CombinedOutput()
+
+	if fileCtx.Err() == context.DeadlineExceeded {
+		fmt.Println(fileCtx.Err())
+		return -1, -1
+	}
+
 	if fileErr != nil {
 		fmt.Println(fileErr.Error())
 		return -1, -1
@@ -197,18 +210,19 @@ func countWorktreeChanges(path string) (int, int) {
 		fileCount++
 	}
 
-	if fileCtx.Err() == context.DeadlineExceeded {
-		fmt.Println(fileCtx.Err())
-		return -1, -1
-	}
-
 	commitCtx, commitCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer commitCancel()
 
-	commitCmd := exec.CommandContext(fileCtx, "git", "@{push}...HEAD", "--online")
+	commitCmd := exec.CommandContext(fileCtx, "git", "@{push}..HEAD", "--online")
 	commitCmd.Dir = path
 
 	commitOut, commitErr := commitCmd.CombinedOutput()
+
+	if commitCtx.Err() == context.DeadlineExceeded {
+		fmt.Println(commitCtx.Err())
+		return -1, -1
+	}
+
 	if commitErr != nil {
 		fmt.Println(commitErr.Error())
 		return -1, -1
@@ -224,11 +238,6 @@ func countWorktreeChanges(path string) (int, int) {
 			continue
 		}
 		commitCount++
-	}
-
-	if commitCtx.Err() == context.DeadlineExceeded {
-		fmt.Println(commitCtx.Err())
-		return -1, -1
 	}
 
 	return fileCount, commitCount
@@ -268,6 +277,8 @@ func RemoveWorktree(name string, discardChanges bool) (string, error) {
 	}
 
 	removeArgs := []string{"worktree", "remove"}
+
+	removeArgs = append(removeArgs, path)
 
 	if discardChanges {
 		removeArgs = append(removeArgs, "--force")
