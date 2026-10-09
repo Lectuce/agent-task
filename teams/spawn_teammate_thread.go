@@ -54,6 +54,7 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 		}()
 
 		worktreePath := ""
+		currentTaskID := ""
 
 		currentCWD := func() string {
 			if worktreePath != "" {
@@ -238,6 +239,12 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				claimedTask, err := task.LoadTask(taskID)
 				if err != nil {
 					return "", err
+				}
+
+				if claimedTask.Worktree != "" {
+					worktreePath = filepath.Join(config.WORKTREES_DIR, claimedTask.Worktree)
+				} else {
+					worktreePath = ""
 				}
 
 				if claimedTask.Status == task.StatusInProgress && claimedTask.Owner != nil && *claimedTask.Owner == name {
