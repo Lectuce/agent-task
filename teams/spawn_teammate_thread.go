@@ -259,23 +259,6 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				)
 
 			}
-			// if err != nil {
-			// 	fmt.Println(err.Error())
-			// 	return
-			// }
-			// if len(inbox) > 0 {
-			// 	rawdata, err := json.Marshal(inbox)
-			// 	if err != nil {
-			// 		fmt.Println(err.Error())
-			// 		return
-			// 	}
-			// 	data := string(rawdata)
-			// 	messages = append(messages,
-			// 		anthropic.NewUserMessage(
-			// 			anthropic.NewTextBlock(fmt.Sprintf("<inbox>%v</inbox>", data)),
-			// 		),
-			// 	)
-			// }
 
 			requestMessage := messages
 			if len(requestMessage) > 20 {

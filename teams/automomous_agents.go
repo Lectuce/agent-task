@@ -114,10 +114,16 @@ func idlePoll(agentName string, messages *[]anthropic.MessageParam, name string,
 				return "", err
 			}
 			if result.Claimed {
+				var worktreeInfo string
+				if t.Worktree != "" {
+					worktreeDir := filepath.Join(config.WORKTREES_DIR, t.Worktree)
+					worktreeInfo = fmt.Sprintf("Work directory: %s", worktreeDir)
+				}
+
 				*messages = append(*messages, anthropic.NewUserMessage(
 					anthropic.NewTextBlock(
 						fmt.Sprintf("<auto-claimed>Task %v: "+
-							"%v</auto-claimed>", t.ID, t.Subject,
+							"%v%v</auto-claimed>", t.ID, t.Subject, worktreeInfo,
 						),
 					),
 				))
