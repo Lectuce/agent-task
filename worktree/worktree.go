@@ -213,7 +213,7 @@ func countWorktreeChanges(path string) (int, int) {
 	commitCtx, commitCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer commitCancel()
 
-	commitCmd := exec.CommandContext(fileCtx, "git", "@{push}..HEAD", "--online")
+	commitCmd := exec.CommandContext(fileCtx, "git", "log", "@{push}..HEAD", "--online")
 	commitCmd.Dir = path
 
 	commitOut, commitErr := commitCmd.CombinedOutput()

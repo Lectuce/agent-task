@@ -248,7 +248,30 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 
 				return result, nil
 			},
-			"complete_task": runCompleteTask,
+			"complete_task": func(input map[string]any) (string, error) {
+				taskID, ok := input["task_id"].(string)
+
+				if !ok || taskID == "" {
+					return "", fmt.Errorf("task_id is required")
+				}
+
+				result, err := task.CompleteTask(taskID)
+				if err != nil {
+					return "", err
+				}
+
+				completedTask, err := task.LoadTask(taskID)
+				if err != nil {
+					return "", err
+				}
+
+				if completedTask.Status == task.StatusCompleted && currentTaskID == taskID {
+					currentTaskID = ""
+					worktreePath = ""
+				}
+				return result, nil
+
+			},
 		}
 		state := recovery.InitRecoveryState()
 		shutDownRequested := false
