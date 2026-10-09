@@ -25,6 +25,9 @@ var ToolHandlers = map[string]ToolHandler{
 	"request_shutdown": runRequestShudown,
 	"request_plan":     runRequestPlan,
 	"review_plan":      runReviewPlan,
+	"create_worktree":  runCreateWorktree,
+	"remove_worktree":  runRemoveWorktree,
+	"keep_worktree":    runKeepWroktree,
 }
 
 var SubHandlers = map[string]ToolHandler{

@@ -379,6 +379,54 @@ var ClientTools = []anthropic.ToolParam{
 			Required: []string{"request_id", "approve"},
 		},
 	},
+
+	{
+		Name:        "create_worktree",
+		Description: anthropic.String("Create an isolated git worktree with its own branch."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+				"task_id": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			Required: []string{"name", "task_id"},
+		},
+	},
+
+	{
+		Name:        "remove_worktree",
+		Description: anthropic.String("Remove a worktree. Refuses if uncommitted changes unless discard_changes=true."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+				"discard_changes": map[string]interface{}{
+					"type": "boolean",
+				},
+			},
+			Required: []string{"name", "discard_changes"},
+		},
+	},
+
+	{
+		Name:        "keep_worktree",
+		Description: anthropic.String("Keep a worktree for manual review."),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			Required: []string{"name"},
+		},
+	},
 }
 
 var ServerTools = []anthropic.ToolUnionParam{

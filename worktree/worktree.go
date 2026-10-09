@@ -116,7 +116,7 @@ func logEvent(eventType string, workTreeName string, taskID string) error {
 	return nil
 }
 
-func createWorktree(name string, taskID string) (string, error) {
+func CreateWorktree(name string, taskID string) (string, error) {
 	_, err := validateWorktreeName(name)
 	if err != nil {
 		return "valididate failed", err
@@ -234,11 +234,11 @@ func countWorktreeChanges(path string) (int, int) {
 	return fileCount, commitCount
 }
 
-func removeWorktree(name string, discardChanges bool) string {
+func RemoveWorktree(name string, discardChanges bool) (string, error) {
 
 	_, err := validateWorktreeName(name)
 	if err != nil {
-		return fmt.Sprintf("name is illegal: %v", err)
+		return "", fmt.Errorf("name is illegal: %v", err)
 	}
 
 	path := filepath.Join(config.WORKTREES_DIR, name)
@@ -246,20 +246,20 @@ func removeWorktree(name string, discardChanges bool) string {
 	_, err = os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Sprintf("worktree is not found: %v", err)
+			return "", fmt.Errorf("worktree is not found: %v", err)
 		}
-		return err.Error()
+		return "", err
 	}
 
 	if discardChanges == false {
 		fileCount, commitCount := countWorktreeChanges(path)
 		if fileCount == -1 || commitCount == -1 {
-			return fmt.Sprintf("Cannot verify worktree '%v' status. "+
+			return "", fmt.Errorf("Cannot verify worktree '%v' status. "+
 				"Use discard_changes=true to force removal.", name)
 		}
 
 		if fileCount > 0 || commitCount > 0 {
-			return fmt.Sprintf("Worktree '%s' has %d uncommitted file(s) "+
+			return "", fmt.Errorf("Worktree '%s' has %d uncommitted file(s) "+
 				"and %d unpushed commit(s). "+
 				"Use discard_changes=true to force removal, "+
 				"or keep_worktree to preserve for review.", name, fileCount, commitCount)
@@ -275,35 +275,35 @@ func removeWorktree(name string, discardChanges bool) string {
 	result, err := runGit(removeArgs)
 
 	if err != nil {
-		return fmt.Sprintf("Failed to remove worktree directory for '%s', output: %s", name, result)
+		return "", fmt.Errorf("Failed to remove worktree directory for '%s', output: %s", name, result)
 	}
 
 	branchResult, err := runGit([]string{"branch", "-D", fmt.Sprintf("wt/%s", name)})
 	if err != nil {
-		return fmt.Sprintf("Failed to remove worktree branch for %s: %v, output: %s", name, err, branchResult)
+		return "", fmt.Errorf("Failed to remove worktree branch for %s: %v, output: %s", name, err, branchResult)
 	}
 
 	err = logEvent(Remove, name, "")
 	if err != nil {
-		return fmt.Sprintf("log event failed for %s: %v", name, err)
+		return "", fmt.Errorf("log event failed for %s: %v", name, err)
 	}
 
 	fmt.Printf("  \033[36m[worktree] removed: %s\033[0m", name)
 
-	return fmt.Sprintf("Worktree '%s' removed", name)
+	return fmt.Sprintf("Worktree '%s' removed", name), nil
 }
 
-func keepWorktree(name string) string {
+func KeepWorktree(name string) (string, error) {
 
 	_, err := validateWorktreeName(name)
 	if err != nil {
-		return err.Error()
+		return "", err
 	}
 
 	err = logEvent(Keep, name, "")
 	if err != nil {
-		return err.Error()
+		return "", err
 	}
 	print(fmt.Sprintf("  \033[36m[worktree] kept: %s\033[0m", name))
-	return fmt.Sprintf("Worktree '%s' kept for review (branch: wt/%s)", name, name)
+	return fmt.Sprintf("Worktree '%s' kept for review (branch: wt/%s)", name, name), nil
 }
