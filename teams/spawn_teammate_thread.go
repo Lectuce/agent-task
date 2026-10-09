@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -51,6 +52,16 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				name,
 			)
 		}()
+
+		worktreePath := ""
+
+		currentCWD := func() string {
+			if worktreePath != "" {
+				return worktreePath
+			}
+
+			return config.WORKDIR
+		}
 
 		ctx := context.Background()
 		messages := []anthropic.MessageParam{
@@ -180,9 +191,15 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 		}
 
 		var subHandlers = map[string]toolHandler{
-			"bash":       runBash,
-			"read_file":  runRead,
-			"write_file": runWrite,
+			"bash": func(input map[string]any) (string, error) {
+				return runBashAt(input, currentCWD())
+			},
+			"read_file": func(input map[string]any) (string, error) {
+				return runReadAt(input, currentCWD())
+			},
+			"write_file": func(input map[string]any) (string, error) {
+				return runWriteAt(input, currentCWD())
+			},
 			"send_message": func(input map[string]any) (string, error) {
 				to, ok := input["to"].(string)
 				if !ok || to == "" {
@@ -213,7 +230,23 @@ func SpawnTeammateThread(name string, role string, prompt string) (string, error
 				if !ok || taskID == "" {
 					return "", fmt.Errorf("task_id is required.")
 				}
-				return task.ClaimTask(taskID, name)
+				result, err := task.ClaimTask(taskID, name)
+				if err != nil {
+					return "", err
+				}
+
+				claimedTask, err := task.LoadTask(taskID)
+				if err != nil {
+					return "", err
+				}
+
+				if claimedTask.Status == task.StatusInProgress && claimedTask.Owner != nil && *claimedTask.Owner == name {
+					worktreePath = filepath.Join(config.WORKTREES_DIR, claimedTask.Worktree)
+				} else {
+					worktreePath = ""
+				}
+
+				return result, nil
 			},
 			"complete_task": runCompleteTask,
 		}
