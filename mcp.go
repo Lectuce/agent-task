@@ -26,7 +26,7 @@ func buildMCPConfig() mcpclient.ServerConfig {
 	}
 }
 
-func validateMCPConfig(serverConfig mcpclient.ServerConfig, ctx context.Context) error {
+func validateMCPConfig(serverConfig mcpclient.ServerConfig) error {
 
 	if serverConfig.Name == "" {
 		return fmt.Errorf("MCP_SERVER_NAME is required")
@@ -58,7 +58,7 @@ func setupMCP(ctx context.Context) (*mcpclient.Manager, error) {
 		return mcpManager, nil
 	}
 
-	err := validateMCPConfig(serverConfig, ctx)
+	err := validateMCPConfig(serverConfig)
 	if err != nil {
 		return nil, err
 	}
