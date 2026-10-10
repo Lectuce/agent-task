@@ -31,6 +31,14 @@ func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContex
 		return subagent.SpawnSubagent(input, ctx)
 	}
 
+	for _, toolName := range mcpManager.ToolNames() {
+		name := toolName
+
+		handlers[name] = func(input map[string]any) (string, error) {
+			return mcpManager.Execute(ctx, name, input)
+		}
+	}
+
 	// messages := currentSession.Messages
 	history := currentSession.Messages
 

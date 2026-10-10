@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/chzyer/readline"
@@ -59,6 +60,22 @@ func main() {
 			fmt.Printf("[MCP close error] %v\n", err)
 		}
 	}()
+	serverConfig := mcpclient.ServerConfig{
+		Name:      config.MCP_SERVER_NAME,
+		Enabled:   true,
+		Required:  true,
+		Transport: "http",
+		URL:       config.MCP_URL,
+		Headers: map[string]string{
+			"Authorization": "Bearer <TOKEN>",
+		},
+		Timeout: 30 * time.Second,
+	}
+
+	if err := mcpManager.Connect(ctx, serverConfig); err != nil {
+		fmt.Printf("[MCP connect error] %v\n", err)
+		return
+	}
 
 	go cronManager.SchedulerLoop(ctx)
 	go loop.QueueProcessorLoop(cronManager, ctx, promptContext, func() *session.Session {

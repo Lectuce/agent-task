@@ -158,6 +158,8 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 
 	m.connections[config.Name] = &ServerConnection{
 		Session: session,
+		Client:  client,
+		Config:  config,
 	}
 
 	for name, route := range newRoutes {
