@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/chzyer/readline"
@@ -62,14 +61,12 @@ func main() {
 	}()
 	serverConfig := mcpclient.ServerConfig{
 		Name:      config.MCP_SERVER_NAME,
-		Enabled:   true,
-		Required:  true,
-		Transport: "http",
+		Enabled:   config.MCP_ENABLED,
+		Required:  config.MCP_REQUIRED,
+		Transport: config.MCP_TRANSPORT,
 		URL:       config.MCP_URL,
-		Headers: map[string]string{
-			"Authorization": "Bearer <TOKEN>",
-		},
-		Timeout: 30 * time.Second,
+		Headers:   config.MCPHeaders(),
+		Timeout:   config.MCP_TIMEOUT,
 	}
 
 	if err := mcpManager.Connect(ctx, serverConfig); err != nil {
