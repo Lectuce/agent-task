@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
 	"slices"
 	"sync"
@@ -62,11 +64,18 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 			)
 		}
 
+		cmd := exec.Command(config.Command, config.Args...)
+
+		if len(config.Env) > 0 {
+			cmd.Env = os.Environ()
+
+			for key, value := range config.Env {
+				cmd.Env = append(cmd.Env, key+"="+value)
+			}
+		}
+
 		transport = &mcp.CommandTransport{
-			Command: exec.Command(
-				config.Command,
-				config.Args...,
-			),
+			Command: cmd,
 		}
 
 	case "http":
@@ -77,8 +86,16 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 			)
 		}
 
+		httpClient := &http.Client{
+			Transport: &headerRoundTripper{
+				base:    http.DefaultTransport,
+				headers: config.Headers,
+			},
+		}
+
 		transport = &mcp.StreamableClientTransport{
-			Endpoint: config.URL,
+			Endpoint:   config.URL,
+			HTTPClient: httpClient,
 		}
 
 	default:
@@ -105,19 +122,23 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 
 	newRoutes := make(map[string]*RemoteTool)
 
-	for _, defination := range discovered {
+	for _, definition := range discovered {
 
-		if defination == nil || defination.Name == "" {
+		if definition == nil || definition.Name == "" {
 			continue
 		}
 
-		exposedName := buildExposedName(config.Name, defination.Name)
+		if !toolAllowed(definition.Name, config.AllowTools, config.DenyTools) {
+			continue
+		}
+
+		exposedName := buildExposedName(config.Name, definition.Name)
 
 		route := &RemoteTool{
 			ExposeName:   exposedName,
 			ServerName:   config.Name,
-			OriginalName: defination.Name,
-			Definition:   defination,
+			OriginalName: definition.Name,
+			Definition:   definition,
 		}
 
 		_, err = toAnthropicTool(route)
