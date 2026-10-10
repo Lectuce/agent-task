@@ -1,11 +1,12 @@
 package mcpclient
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
-	"sort"
 	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -13,9 +14,9 @@ import (
 )
 
 type Manager struct {
-	mu       sync.Mutex
-	sessions map[string]*mcp.ClientSession
-	tools    map[string]RemoteTool
+	mu          sync.Mutex
+	connections map[string]*ServerConnection
+	tools       map[string]RemoteTool
 }
 
 type RemoteTool struct {
@@ -27,8 +28,8 @@ type RemoteTool struct {
 
 func NewManager() *Manager {
 	return &Manager{
-		sessions: make(map[string]*mcp.ClientSession, 0),
-		tools:    make(map[string]RemoteTool, 0),
+		connections: make(map[string]*ServerConnection, 0),
+		tools:       make(map[string]RemoteTool, 0),
 	}
 }
 
@@ -139,7 +140,7 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	_, ok := m.sessions[config.Name]
+	_, ok := m.connections[config.Name]
 	if ok {
 		_ = session.Close()
 
@@ -155,7 +156,9 @@ func (m *Manager) Connect(ctx context.Context, config ServerConfig) error {
 		}
 	}
 
-	m.sessions[config.Name] = session
+	m.connections[config.Name] = &ServerConnection{
+		Session: session,
+	}
 
 	for name, route := range newRoutes {
 		m.tools[name] = *route
@@ -176,8 +179,8 @@ func (m *Manager) BuildTools() ([]anthropic.ToolUnionParam, error) {
 
 	m.mu.Unlock()
 
-	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].ExposeName < routes[j].ExposeName
+	slices.SortFunc(routes, func(a, b *RemoteTool) int {
+		return cmp.Compare(a.ExposeName, b.ExposeName)
 	})
 
 	result := make(
@@ -214,17 +217,112 @@ func (m *Manager) ToolNames() []string {
 
 	names := make([]string, 0, len(m.tools))
 
-	for _, name := range m.tools {
-		names = append(names, name.)
+	for _, route := range m.tools {
+		names = append(names, route.ExposeName)
 	}
 
 	slices.Sort(names)
 
 	return names
 
+}
+
+func (m *Manager) Execute(ctx context.Context, exposedName string, input map[string]any) (string, error) {
+
+	m.mu.Lock()
+
+	route, ok := m.tools[exposedName]
+	if !ok {
+		m.mu.Unlock()
+		return "", fmt.Errorf("unknown MCP tool: %v", exposedName)
+	}
+
+	connection, ok := m.connections[route.ServerName]
+	m.mu.Unlock()
+
+	if !ok || connection.Session == nil {
+		return "", fmt.Errorf(
+			"MCP server %v is not connected",
+			route.ServerName,
+		)
+	}
+
+	callCtx := ctx
+	cancel := func() {}
+
+	if connection.Config.Timeout > 0 {
+		callCtx, cancel = context.WithTimeout(
+			ctx,
+			connection.Config.Timeout,
+		)
+	}
+	defer cancel()
+
+	result, err := connection.Session.CallTool(
+		callCtx,
+		&mcp.CallToolParams{
+			Name:      route.OriginalName,
+			Arguments: input,
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf(
+			"call MCP tool %q: %w",
+			exposedName,
+			err,
+		)
+	}
+
+	output, err := formatToolResult(result)
+	if err != nil {
+		return "", err
+	}
+
+	if result.IsError {
+		return "", fmt.Errorf("%s", output)
+	}
+
+	return output, nil
 
 }
 
-func (m *Manager) Execute(ctx context.Context, exposedName string, input map[string]any) (string, error)
+func (m *Manager) Close() error {
 
-func (m *Manager) Close() error
+	m.mu.Lock()
+
+	connections := make(
+		[]*ServerConnection,
+		0,
+		len(m.connections),
+	)
+
+	for _, connection := range m.connections {
+		connections = append(connections, connection)
+	}
+
+	m.connections = make(map[string]*ServerConnection)
+	m.tools = make(map[string]RemoteTool)
+
+	m.mu.Unlock()
+
+	var errs []error
+
+	for _, connection := range connections {
+		if connection.Session == nil {
+			continue
+		}
+
+		if err := connection.Session.Close(); err != nil {
+			errs = append(
+				errs,
+				fmt.Errorf(
+					"close MCP server %q: %w",
+					connection.Config.Name,
+					err,
+				),
+			)
+		}
+	}
+
+	return errors.Join(errs...)
+}

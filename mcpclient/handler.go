@@ -82,3 +82,35 @@ func toAnthropicTool(remote *RemoteTool) (anthropic.ToolParam, error) {
 	}, nil
 
 }
+
+func formatToolResult(result *mcp.CallToolResult) (string, error) {
+	parts := make([]string, 0)
+
+	for _, content := range result.Content {
+		switch value := content.(type) {
+		case *mcp.TextContent:
+			parts = append(parts, value.Text)
+
+		default:
+			data, err := json.Marshal(value)
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, string(data))
+		}
+	}
+
+	if result.StructuredContent != nil {
+		data, err := json.Marshal(result.StructuredContent)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, string(data))
+	}
+
+	if len(parts) == 0 {
+		return "MCP tool completed successfully", nil
+	}
+
+	return strings.Join(parts, "\n"), nil
+}

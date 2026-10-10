@@ -5,6 +5,7 @@ import (
 	"agent/cron"
 	"agent/hook"
 	"agent/loop"
+	"agent/mcpclient"
 	"agent/prompt"
 	"agent/session"
 	"agent/skills"
@@ -46,15 +47,23 @@ func main() {
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-
 	tool.SetCronManager(cronManager)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	mcpManager := mcpclient.NewManager()
+	defer func() {
+		err := mcpManager.Close()
+		if err != nil {
+			fmt.Printf("[MCP close error] %v\n", err)
+		}
+	}()
+
 	go cronManager.SchedulerLoop(ctx)
 	go loop.QueueProcessorLoop(cronManager, ctx, promptContext, func() *session.Session {
 		return sessionManager.CurrentSession()
-	})
+	}, mcpManager)
 	r, err := readline.New("agent[default] >> ")
 	if err != nil {
 		fmt.Println(err.Error())
@@ -90,7 +99,7 @@ func main() {
 
 			currentSession := sessionManager.CurrentSession()
 
-			err := loop.AgentLoop(query, ctx, promptContext, currentSession, cronManager)
+			err := loop.AgentLoop(query, ctx, promptContext, currentSession, cronManager, mcpManager)
 			if err != nil {
 				return err
 			}

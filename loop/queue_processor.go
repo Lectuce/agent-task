@@ -2,6 +2,7 @@ package loop
 
 import (
 	"agent/cron"
+	"agent/mcpclient"
 	"agent/prompt"
 	"agent/session"
 	"context"
@@ -12,7 +13,7 @@ import (
 
 var AgentLock sync.Mutex
 
-func QueueProcessorLoop(cronManager *cron.Manager, ctx context.Context, promptCtx *prompt.PromptContext, getCurrentSession func() *session.Session) {
+func QueueProcessorLoop(cronManager *cron.Manager, ctx context.Context, promptCtx *prompt.PromptContext, getCurrentSession func() *session.Session, mcpManager *mcpclient.Manager) {
 	ticker := time.NewTicker(200 * time.Millisecond)
 
 	defer ticker.Stop()
@@ -53,6 +54,7 @@ func QueueProcessorLoop(cronManager *cron.Manager, ctx context.Context, promptCt
 					promptCtx,
 					currentSession,
 					cronManager,
+					mcpManager,
 				)
 
 				if err != nil {

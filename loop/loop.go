@@ -6,6 +6,7 @@ import (
 	"agent/config"
 	"agent/cron"
 	"agent/hook"
+	"agent/mcpclient"
 	"agent/memory"
 	"agent/prompt"
 	"agent/recovery"
@@ -19,7 +20,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
-func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContext, currentSession *session.Session, cronManager *cron.Manager) error {
+func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContext, currentSession *session.Session, cronManager *cron.Manager, mcpManager *mcpclient.Manager) error {
 	var round = 0
 	handlers := make(map[string]tool.ToolHandler, 0)
 	for name, handler := range tool.ToolHandlers {
@@ -150,6 +151,13 @@ func AgentLoop(query string, ctx context.Context, promptCtx *prompt.PromptContex
 
 		// 工具
 		tools := tool.BuildTools()
+
+		mcpTools, err := mcpManager.BuildTools()
+		if err != nil {
+			return fmt.Errorf("build MCP tools: %v", err)
+		}
+
+		tools = append(tools, mcpTools...)
 
 		// 调用LLM， retry
 		message, err := recovery.WithRetry(
