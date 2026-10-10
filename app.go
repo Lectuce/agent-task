@@ -55,7 +55,6 @@ func newApp(ctx context.Context) (*App, error) {
 
 	mcpManager, err := setupMCP(ctx)
 	if err != nil {
-		_ = mcpManager.Close()
 		return nil, err
 	}
 
@@ -67,6 +66,7 @@ func newApp(ctx context.Context) (*App, error) {
 	return &App{
 		session:   sessionManager,
 		promptCtx: promptContext,
+		cron:      cronManager,
 		mcp:       mcpManager,
 		reader:    r,
 	}, nil

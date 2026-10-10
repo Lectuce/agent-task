@@ -28,7 +28,8 @@ func (a *App) runREPL(ctx context.Context) error {
 
 		err = a.handleQuery(ctx, query)
 		if err != nil {
-			return err
+			fmt.Printf("[agent error] %v\n", err)
+			continue
 		}
 
 	}

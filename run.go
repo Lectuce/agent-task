@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 )
 
 func run(ctx context.Context) error {
 	app, err := newApp(ctx)
 	if err != nil {
-		fmt.Println(err.Error())
+		return err
 	}
 
 	defer app.Close()
