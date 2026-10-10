@@ -60,21 +60,51 @@ func main() {
 		}
 	}()
 
-	if config.MCP_URL != "" {
-		serverConfig := mcpclient.ServerConfig{
-			Name:      config.MCP_SERVER_NAME,
-			Enabled:   config.MCP_ENABLED,
-			Required:  config.MCP_REQUIRED,
-			Transport: config.MCP_TRANSPORT,
-			URL:       config.MCP_URL,
-			Headers:   config.MCPHeaders(),
-			Timeout:   config.MCP_TIMEOUT,
+	serverConfig := mcpclient.ServerConfig{
+		Name:      config.MCP_SERVER_NAME,
+		Enabled:   config.MCP_ENABLED,
+		Required:  config.MCP_REQUIRED,
+		Transport: config.MCP_TRANSPORT,
+
+		URL:     config.MCP_URL,
+		Headers: config.MCPHeaders(),
+
+		Command: config.MCP_COMMAND,
+		Args:    config.MCP_ARGS,
+
+		Timeout:    config.MCP_TIMEOUT,
+		AllowTools: config.MCP_ALLOW_TOOLS,
+		DenyTools:  config.MCP_DENY_TOOLS,
+	}
+
+	if serverConfig.Enabled {
+		var connectErr error
+
+		switch serverConfig.Transport {
+		case "http":
+			if serverConfig.URL == "" {
+				connectErr = fmt.Errorf("MCP_URL is required for HTTP transport")
+			}
+
+		case "stdio":
+			if serverConfig.Command == "" {
+				connectErr = fmt.Errorf("MCP_COMMAND is required for stdio transport")
+			}
+
+		default:
+			connectErr = fmt.Errorf("unsupported MCP transport: %s", serverConfig.Transport)
 		}
 
-		err := mcpManager.Connect(ctx, serverConfig)
-		if err != nil {
-			fmt.Printf("[MCP connect error] %v\n", err)
-			return
+		if connectErr == nil {
+			connectErr = mcpManager.Connect(ctx, serverConfig)
+		}
+
+		if connectErr != nil {
+			fmt.Printf("[MCP error] %v\n", connectErr)
+
+			if serverConfig.Required {
+				return
+			}
 		}
 	}
 
