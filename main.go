@@ -59,19 +59,23 @@ func main() {
 			fmt.Printf("[MCP close error] %v\n", err)
 		}
 	}()
-	serverConfig := mcpclient.ServerConfig{
-		Name:      config.MCP_SERVER_NAME,
-		Enabled:   config.MCP_ENABLED,
-		Required:  config.MCP_REQUIRED,
-		Transport: config.MCP_TRANSPORT,
-		URL:       config.MCP_URL,
-		Headers:   config.MCPHeaders(),
-		Timeout:   config.MCP_TIMEOUT,
-	}
 
-	if err := mcpManager.Connect(ctx, serverConfig); err != nil {
-		fmt.Printf("[MCP connect error] %v\n", err)
-		return
+	if config.MCP_URL != "" {
+		serverConfig := mcpclient.ServerConfig{
+			Name:      config.MCP_SERVER_NAME,
+			Enabled:   config.MCP_ENABLED,
+			Required:  config.MCP_REQUIRED,
+			Transport: config.MCP_TRANSPORT,
+			URL:       config.MCP_URL,
+			Headers:   config.MCPHeaders(),
+			Timeout:   config.MCP_TIMEOUT,
+		}
+
+		err := mcpManager.Connect(ctx, serverConfig)
+		if err != nil {
+			fmt.Printf("[MCP connect error] %v\n", err)
+			return
+		}
 	}
 
 	go cronManager.SchedulerLoop(ctx)
