@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,4 +56,23 @@ func MCPHeaders() map[string]string {
 	return map[string]string{
 		MCP_AUTH_HEADER: value,
 	}
+}
+
+func envCSV(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+
+	values := strings.Split(value, ",")
+	result := make([]string, 0, len(values))
+
+	for _, item := range values {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+
+	return result
 }

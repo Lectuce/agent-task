@@ -55,6 +55,11 @@ var MCP_REQUIRED = envBool("MCP_REQUIRED", true)
 var MCP_TIMEOUT = envDuration("MCP_TIMEOUT", 30*time.Second)
 var MCP_AUTH_HEADER = envString("MCP_AUTH_HEADER", "Authorization")
 var MCP_AUTH_SCHEME = envString("MCP_AUTH_SCHEME", "Bearer")
+var MCP_COMMAND = os.Getenv("MCP_COMMAND")
+var MCP_ARGS = envCSV("MCP_ARGS")
+
+var MCP_ALLOW_TOOLS = envCSV("MCP_ALLOW_TOOLS")
+var MCP_DENY_TOOLS = envCSV("MCP_DENY_TOOLS")
 
 func envInt64(key string, def int64) int64 {
 	v := os.Getenv(key)
