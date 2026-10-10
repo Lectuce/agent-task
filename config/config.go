@@ -47,9 +47,14 @@ var MODEL = os.Getenv("MODEL")
 var PRIMARY_MODEL = MODEL
 
 var MCP_SERVER_NAME = os.Getenv("MCP_SERVER_NAME")
-var MCP_TRANSPORT = os.Getenv("MCP_SERVER_NAME")
+var MCP_TRANSPORT = envString("MCP_TRANSPORT", "http")
 var MCP_TOKEN = os.Getenv("MCP_TOKEN")
 var MCP_URL = os.Getenv("MCP_URL")
+var MCP_ENABLED = envBool("MCP_ENABLED", true)
+var MCP_REQUIRED = envBool("MCP_REQUIRED", true)
+var MCP_TIMEOUT = envDuration("MCP_TIMEOUT", 30*time.Second)
+var MCP_AUTH_HEADER = envString("MCP_AUTH_HEADER", "Authorization")
+var MCP_AUTH_SCHEME = envString("MCP_AUTH_SCHEME", "Bearer")
 
 func envInt64(key string, def int64) int64 {
 	v := os.Getenv(key)
