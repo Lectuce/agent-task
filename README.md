@@ -1,10 +1,8 @@
 # Agent
 
-这是一个使用 Go 实现的 agent。
+这是一个使用 Go 和 Anthropic SDK 实现的 Agent。
 
 
-
-文件读写、Shell、任务拆分、记忆、定时任务和 MCP 都接在这个循环上。程序启动时的目录就是 Agent 的工作区。
 
 ## 功能
 
