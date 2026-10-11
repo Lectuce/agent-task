@@ -240,10 +240,4 @@ background/          后台命令
 
 实现过程和记录放在 [`development.md`](./development.md)。
 
-## 开发
 
-```bash
-go fmt ./...
-go test ./...
-go build ./...
-```

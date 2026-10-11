@@ -1,288 +1,158 @@
-# AI Development Record
+# 开发记录
 
-本文档记录 Go Agent 开发过程中使用 AI 辅助分析、设计与调试的主要问题。
+这份文档主要记两件事：代码为什么这样拆，以及开发过程中踩过哪些坑。
 
-## 1. Agent Loop：从单次 LLM 调用到循环
+运行方法和配置项放在 [`README.md`](./README.md)，这里不再重复。想从代码入手，可以先看 `app.go` 和 `loop/loop.go`，再顺着工具、上下文和任务模块往下读。
 
-### Prompt
+## 1. Agent Loop
 
-如何用 Go 从零实现一个最小 Agent Loop？模型需要能够自己决定直接回答还是调用工具，工具执行后再把结果返回给模型继续判断。
-
-### Problem
-
-如果只做一次模型调用：
+最早的版本只有一次模型请求：
 
 ```text
-User
- ↓
-LLM
- ↓
-Answer
+User -> LLM -> Answer
 ```
 
-即使模型返回了工具调用，也没有形成真正的 Agent Runtime。
+这还不够。模型即使返回了 `tool_use`，程序也没有机会执行工具，更不会把结果交回去继续判断。
 
-### Solution
-
-维护持续增长的 messages[]，并用循环反复调用模型：
+现在的主循环是：
 
 ```text
-              ┌──────────────────────────────┐
-              │                              │
-              ▼                              │
-       ┌─────────────┐                       │
-       │ messages[]  │                       │
-       └──────┬──────┘                       │
-              ▼                              │
-       ┌─────────────┐                       │
-       │     LLM     │                       │
-       └──────┬──────┘                       │
-              ▼                              │
-       ┌─────────────┐                       │
-       │ tool_use ?  │                       │
-       └──────┬──────┘                       │
-          是  │  否                          │
-              │   └──────────► 最终回答      │
-              ▼                              │
-       ┌─────────────┐                       │
-       │ 执行工具    │                       │
-       └──────┬──────┘                       │
-              ▼                              │
-       ┌─────────────┐                       │
-       │ tool_result │                       │
-       └──────┬──────┘                       │
-              └──────────────────────────────┘
+messages
+   |
+   v
+  LLM ---- end_turn ----> 输出答案
+   |
+ tool_use
+   |
+   v
+执行工具
+   |
+   v
+tool_result
+   |
+   +---------------------> 回到 messages
 ```
 
-核心思想：
+`loop.AgentLoop` 每轮检查 `stop_reason`。只要模型还在调用工具，就把 Assistant 消息和 Tool Result 都追加到历史中，再发起下一次请求。单个任务最多执行 `MAX_AGENT_ROUNDS` 轮，避免模型陷入没有出口的循环。
 
-```text
-Model → Tool → Result → Model
-```
+轮数必须是 `AgentLoop` 的局部变量，不能放在 package 级别。否则多个请求会共用一个计数器，新任务可能一开始就撞上上一轮留下的上限。
 
-## 2. Tool Registry：把工具从 Agent Loop 中拆出去
+## 2. 两份消息
 
-### Prompt
+Loop 里同时保留 `history` 和 `requestMessages`，两者用途不同：
 
-bash、read_file、write_file 等工具越来越多，如果全部写在 AgentLoop 里会很乱，应该怎么组织？
+- `history` 是 Session 的真实消息历史。
+- `requestMessages` 是这一轮实际发给模型的副本，可以注入 Memory，也可以被压缩。
 
-### Problem
+如果直接在 Session 历史上做压缩或 Memory 注入，临时内容会永久留下。下一轮再处理一次，就会出现重复 Memory、重复摘要，最后很难分清用户到底说过什么。
 
-如果不断在主循环中写：
+`memory.CloneMessages` 通过 JSON 编解码做深拷贝。新消息写入时，`memory.AppendMessage` 会分别更新两份数据。Loop 结束后只把 `history` 写回当前 Session。
+
+Session 要以指针传给 Loop：
 
 ```go
-if block.Name == "bash" {
-    ...
-} else if block.Name == "read_file" {
-    ...
-}
+func AgentLoop(
+    query string,
+    ctx context.Context,
+    promptCtx *prompt.PromptContext,
+    currentSession *session.Session,
+    cronManager *cron.Manager,
+    mcpManager *mcpclient.Manager,
+) error
 ```
 
-新增工具会不断修改核心 Loop。
+传值会复制 `Session` 结构，后续对消息、Todo 轮数和后台任务状态的修改容易丢失。
 
-### Solution
+## 3. 工具注册
 
-统一定义 Tool Handler：
+工具多起来以后，不能继续在 Loop 里写一长串 `if block.Name == ...`。本地工具统一放进 Handler 表：
 
 ```go
 type ToolHandler func(map[string]any) (string, error)
-```
 
-并建立 Registry：
-
-```go
 var ToolHandlers = map[string]ToolHandler{
     "bash":       runBash,
     "read_file":  runRead,
     "write_file": runWrite,
     "edit_file":  runEdit,
     "glob":       runGlob,
-    "todo_write": runTodoWrite,
 }
 ```
 
-模型只需要看到 Tool Schema，Runtime 根据：
+模型看到的是 Tool Schema；执行时再用工具名查 Handler。这样新增工具通常只需要补 Schema 和 Handler，不用改主循环的分支。
 
-```go
-handler, ok := ToolHandlers[block.Name]
+目前有三类工具：
+
+```text
+本地工具    由 Go Handler 执行，例如 bash、read_file、calculator
+服务端工具  由模型服务执行，目前是 web_search
+MCP 工具   通过 MCP Client 转发给外部 Server
 ```
 
-找到对应实现。
+`web_search` 不在 `ToolHandlers` 里，因为它不是本地调用。MCP 工具会在启动时动态加入 Handler 路由。
 
-### Result
+### 工具名必须一致
 
-Agent Loop 只负责协议与调度，具体工具逻辑独立维护。
-
-## 3. Tool Name 不一致导致 unknown tool
-
-### Problem
-
-曾出现：
+Schema 里的名称和 Handler 表的 Key 必须完全相同。比如 Schema 注册 `read_file`，Handler 却写成 `readFile`，运行时只会得到：
 
 ```text
 unknown tool: read_file
 ```
 
-### Cause
+这个问题看起来像模型调用错了，实际是本地注册表没有对齐。
 
-Tool Schema 中注册的是：
+### 不要直接断言工具参数
 
-```text
-read_file
-```
-
-而 Handler 使用了不同名称，例如：
-
-```text
-readFile
-```
-
-### Solution
-
-统一 Tool Schema Name 和 Handler Registry Key：
-
-```go
-"read_file": runRead
-```
-
-### Result
-
-模型返回的 tool_use.name 可以稳定匹配本地 Handler。
-
-## 4. Tool 输入解析导致类型断言问题
-
-### Problem
-
-读取 Tool 参数时曾出现类似：
-
-```text
-panic: interface conversion: interface {} is nil, not int
-```
-
-### Cause
-
-直接进行：
+工具参数来自 JSON，数字一般会解成 `float64`，可选字段也可能根本不存在。下面这种写法很容易 panic：
 
 ```go
 offset := input["offset"].(int)
 ```
 
-当字段不存在或 JSON 数字类型不是 int 时会 panic。
-
-### Solution
-
-先判断字段是否存在，并安全转换：
+需要先检查字段，再处理可能的类型：
 
 ```go
-offset := 0
-
-if v, ok := input["offset"]; ok {
-    switch n := v.(type) {
+if value, ok := input["offset"]; ok {
+    switch number := value.(type) {
     case float64:
-        offset = int(n)
+        offset = int(number)
     case int:
-        offset = n
+        offset = number
     }
 }
 ```
 
-### Result
+必填字符串和布尔值则通过 `requireString`、`requireBool` 这类小函数统一检查。
 
-Tool 参数缺失时使用默认值，而不是让整个 Runtime 崩溃。
+## 4. 工具失败不是 Loop 失败
 
-## 5. Bash Tool：超时和危险命令限制
+`read_file` 找不到文件、Shell 返回非零状态、Permission 拒绝操作，这些都只是一次工具调用失败。直接 `return err` 会结束整个任务，模型也看不到失败原因。
 
-### Prompt
-
-Agent 可以执行 bash，但如何避免命令无限运行或者执行明显危险操作？
-
-### Solution
-
-Bash Tool 增加：
-
-- 执行超时
-- 危险命令 deny list
-- 输出长度限制
-
-示意：
-
-```go
-ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-defer cancel()
-
-cmd := exec.CommandContext(ctx, "bash", "-lc", command)
-output, err := cmd.CombinedOutput()
-```
-
-危险操作示例：
-
-```text
-rm -rf /
-sudo
-shutdown
-reboot
-> /dev/
-```
-
-### Result
-
-Bash Tool 从“直接执行任意 shell”变成受 Runtime 管理的工具。
-
-## 6. Permission：拒绝工具后为什么不能直接退出
-
-### Prompt
-
-PreToolUse 判断一个工具危险后，是直接 return error，还是返回给模型？
-
-### Problem
-
-如果 Permission Denied 后直接：
-
-```go
-return errors.New("permission denied")
-```
-
-整个 Agent Loop 会结束。
-
-### Solution
-
-把拒绝转换成 Error ToolResult：
+现在会把错误放进 `tool_result`：
 
 ```go
 anthropic.NewToolResultBlock(
     block.ID,
-    "permission denied",
+    err.Error(),
     true,
 )
 ```
 
-流程：
+模型拿到错误后可以换路径、修改命令，或者向用户解释为什么做不了。只有 Runtime 自己无法继续工作时，例如请求结构损坏或重试耗尽，Loop 才返回错误。
 
-```text
-tool_use
-   ↓
-PreToolUse
-   ↓
-Permission denied
-   ↓
-error tool_result
-   ↓
-LLM
-```
+同样的原则也用于 Permission。拒绝危险操作时，返回的是错误 Tool Result，而不是直接杀掉当前会话。
 
-### Result
+## 5. Hooks 和权限检查
 
-模型可以根据失败结果修改策略，而不是 Runtime 直接退出。
+下面这些逻辑都不属于主循环本身：
 
-## 7. Hooks：把扩展逻辑从主循环中抽离
+- 给用户输入加上工作目录
+- 工具执行前做权限检查
+- 记录工具调用
+- 检查过大的输出
+- 本轮结束时打印统计
 
-### Prompt
-
-Permission、Context Injection、Log 都放在 AgentLoop 里会越来越复杂，如何解耦？
-
-### Solution
-
-增加生命周期 Hook：
+它们通过四个 Hook 接入：
 
 ```text
 UserPromptSubmit
@@ -291,58 +161,84 @@ PostToolUse
 Stop
 ```
 
-用途：
+Hook 要真正修改 `HookContext` 才有用。只打印“当前工作目录是什么”不会让模型知道工作目录。`contextInjectHook` 会直接更新 `ctx.Query`，调用方随后使用更新后的 Query。
 
-- UserPromptSubmit：处理用户输入和上下文注入
-- PreToolUse：执行前检查，例如 Permission
-- PostToolUse：工具执行后处理
-- Stop：本轮结束阶段处理
+Shell 工具目前有三层限制：
 
-### Result
+1. 固定在工作区执行。
+2. 运行超过 120 秒会取消。
+3. 明确危险的命令走 deny list，可能破坏文件的命令走人工确认。
 
-新增扩展时不需要不断修改核心 Agent Loop。
+文件工具还会通过 `filepath.Rel` 检查最终路径，拒绝逃出工作区。
 
-## 8. UserPromptSubmit：Hook 不能只打印日志
+这些检查只是 Runtime 内的防护，不是操作系统沙箱。子进程仍然继承启动 Agent 的用户权限。
 
-### Problem
+## 6. 上下文压缩
 
-如果 Hook 只是输出：
+不能等 API 报 context too long 才处理历史。当前每次模型请求前都会依次经过：
 
 ```text
-[HOOK] UserPromptSubmit: working in /home/yujun/projects/agent
+ToolResultBudget
+       |
+       v
+SnipCompact
+       |
+       v
+MicroCompact
+       |
+       v
+EstimateSize > CONTEXT_LIMIT ?
+       |
+       v
+CompactHistory
 ```
 
-模型实际上没有收到工作目录信息。
+各层做的事情不一样：
 
-### Solution
+- `ToolResultBudget` 检查最近一条消息里的工具结果。总量过大时，把大结果写入 `.task_outputs/tool-results`，上下文里只留路径和预览。
+- `SnipCompact` 在消息超过 50 条时保留开头和最近部分，中间换成一条裁剪说明。裁剪时会尽量保证 `tool_use` 和 `tool_result` 成对。
+- `MicroCompact` 保留最近三个工具结果，较旧且超过 120 字节的结果替换为占位文本。
+- `CompactHistory` 在估算大小超过阈值后保存完整 transcript，再让模型把历史压成一条摘要。
 
-让 Hook 修改 HookContext.Query：
+如果 API 仍然返回 prompt too long，会再走一次 `ReactiveCompact`。它同样先保存 transcript，但摘要后还会带上最近五条消息，尽量保住正在进行的工具调用。
 
-```go
-ctx.Query = fmt.Sprintf(
-    "<context>\nWorking directory: %s\n</context>\n\n%s",
-    config.WORKDIR,
-    ctx.Query,
-)
+大结果先落盘很重要。单纯截断虽然省 Token，但模型不知道完整内容还能去哪里找。
+
+## 7. Memory
+
+Memory 不直接追加到 `Session.Messages`。每轮都永久追加会造成三件事：相同内容反复出现、Context 越来越大、长期信息混进真实对话。
+
+当前流程是：
+
+```text
+最近的用户消息
+      |
+      v
+选择最多 5 个相关 Memory
+      |
+      v
+读取 .memory 中的文件
+      |
+      v
+注入 requestMessages 的当前用户消息
+      |
+      v
+发送给模型
 ```
 
-Main 中再使用更新后的 Query：
+相关性优先交给模型判断，只要求返回文件索引。如果选择请求失败或格式不对，再退回到关键词匹配。
 
-```go
-hookCtx := &hook.HookContext{Query: query}
-hook.TriggerHooks(hook.UserPromptSubmit, hookCtx)
-query = hookCtx.Query
-```
+一轮任务结束后，`ExtractMemories` 查看最近十条真实历史，提取用户偏好、反馈、项目事实和外部引用。没有新内容就返回空数组，不写文件。
 
-## 9. Todo Write：让 Agent 显式维护长任务
+这里有一个容易忽略的边界：压缩只作用在 `requestMessages`，Memory 提取使用的是 `history`。否则摘要过程可能把值得长期保留的细节提前丢掉。
 
-### Prompt
+## 8. Todo、Task 和 Subagent
 
-长任务里模型容易忘记自己做到哪里，能不能增加 Todo？
+这三个模块解决的不是同一件事。
 
-### Solution
+### Todo
 
-增加 todo_write Tool，并维护三种状态：
+Todo 是当前 Session 里的短期清单，状态只有：
 
 ```text
 pending
@@ -350,352 +246,120 @@ in_progress
 completed
 ```
 
-输出示例：
+如果模型连续三轮没有更新 Todo，Loop 会插入一条提醒。Todo 不负责跨进程保存，也不处理任务所有者和依赖关系。
+
+### Task
+
+Task 写在 `.tasks` 中，除了状态还有 `Owner`、`BlockedBy` 和 `Worktree`。领取任务前会检查依赖是否完成，认领过程用互斥锁保护，避免两个 Teammate 同时拿到同一个任务。
+
+完成 Task 后会重新扫描任务列表，并报告哪些任务刚刚解除阻塞。
+
+### Subagent
+
+`task` 工具启动的 Subagent 使用独立的消息列表和较小的工具集。主 Agent 只拿最终结果，不接收子任务的每一步历史。
 
 ```text
-## Current Tasks
-
-[in_progress] 检查项目结构
-[pending] 阅读 main.go
-[pending] 总结结果
+Main Agent -> task -> Subagent Loop -> final result -> tool_result
 ```
 
-同时使用 RoundsSinceTodo 记录多久没有更新 Todo，必要时注入提醒：
+这样能隔开上下文，但 Subagent 仍在同一个进程和工作区中运行。它适合一次性的独立工作，不负责长期协作。
+
+## 9. Teams 和 Worktree
+
+Teammate 是后台 goroutine，拥有自己的消息历史、工具和空闲轮询。它可以读取收件箱、领取 Task、提交计划，并把结果发回 `lead`。
+
+消息总线使用 `.mailboxes/<agent>.jsonl`。写入时追加 JSON 行，读取时一次取走整个收件箱并删除文件。协议消息带 `request_id`，用于匹配计划审核和关闭请求。
+
+空闲 Teammate 会定期查看两类工作：
+
+1. 自己的收件箱有没有新消息。
+2. 有没有依赖已经满足、但还没人领取的 Task。
+
+多个成员直接写同一个目录容易互相覆盖，因此 Task 可以绑定 Worktree。创建 Worktree 时会建立 `wt/<name>` 分支，并把目录放在 `.worktrees/<name>`。
+
+删除 Worktree 前会检查未提交文件和未推送提交。无法确认状态或检测到改动时，默认拒绝删除；调用方必须明确选择强制丢弃，或者用 `keep_worktree` 留给人工检查。
+
+## 10. 后台命令
+
+构建、测试和安装经常跑得比一次模型请求久。如果一直阻塞 Loop，Agent 只能原地等命令结束。
+
+`background.Manager` 会把识别为耗时的 Shell 命令放进 goroutine，并立即返回一个 `bg_xxxx` ID。命令结果按 Session 保存，在用户下一次交互时收集并注入历史。
+
+目前是否属于耗时命令主要靠关键词判断，例如 `build`、`test`、`install`、`compile` 和 `docker build`。这种判断简单直接，但不是严格的命令分类器；新增工具或命令形态时要一起检查这里。
+
+## 11. Cron 和执行锁
+
+Cron Scheduler 每秒检查一次五字段表达式。匹配后不直接调用模型，而是先把 Job 放进队列：
 
 ```text
-<reminder>Update your todos.</reminder>
+Scheduler -> Cron Queue -> QueueProcessor -> AgentLoop
 ```
 
-### Result
+REPL 请求和 Cron 都可能进入 Agent Loop，因此共用一把 `AgentLock`。REPL 会正常加锁；Queue Processor 用 `TryLock`，主循环忙时先把任务留在队列，下一次轮询再处理。
 
-Todo 成为复杂任务中的显式短期规划状态。
+一次性 Job 触发后会从注册表删除。带 `durable` 的 Job 保存到 `.cron`，程序启动时重新加载。
 
-## 10. Subagent：使用独立 Context
+调度和执行分开后，不需要用后台 Shell、`sleep` 循环或额外进程实现定时任务。
 
-### Prompt
+## 12. Skills 和 System Prompt
 
-task 工具启动的 Subagent 是否应该直接共用 Main Agent 的 messages？
+如果把所有 `SKILL.md` 都塞进 System Prompt，Skill 越多，固定上下文就越大，而且大部分内容与当前任务无关。
 
-### Problem
+启动时只扫描每个 Skill 的 `name` 和 `description`，生成一个目录。模型真正需要某个 Skill 时，再调用 `load_skill` 读取正文。
 
-如果共享 messages[]：
+System Prompt 由 `prompt.GetSystemPrompt` 组装，主要包含身份、工作区、Memory 提示、调度规则、工具名称和 Skill 目录。真实对话继续放在 `messages` 中，两者不混在一起。
 
-- 子任务中间过程会污染主 Context
-- Token 增长更快
-- 主任务和子任务边界不清晰
+## 13. MCP
 
-### Solution
-
-Subagent 使用独立：
+MCP 连接发生在应用启动阶段：
 
 ```text
-sub messages[]
+读取环境变量
+    |
+    v
+选择 HTTP 或 stdio Transport
+    |
+    v
+连接 Server
+    |
+    v
+tools/list
+    |
+    v
+过滤并注册工具
 ```
 
-形成自己的 Agent Loop：
+远程工具名会被整理成：
 
 ```text
-Main Agent
-    ↓
- task
-    ↓
-Subagent
-    ↓
-Sub LLM
-    ↓
-Sub Tool
-    ↓
-Sub Final Result
-    ↓
-main tool_result
+mcp_<server>_<tool>
 ```
 
-### Result
+连字符、空格、点和斜杠都会换成下划线。注册前会先检查转换后的 Schema，也会检查工具名冲突。
 
-Main Agent 只接收 Subagent 的最终结果。
+`MCP_ALLOW_TOOLS` 和 `MCP_DENY_TOOLS` 针对 Server 返回的原始工具名。Deny 优先；Allow 为空时默认接受其余工具。
 
-## 11. Skills：按需加载，而不是全部放进 Context
+Manager 内部按 Server 保存 Session 和路由，但当前 `setupMCP` 只从环境变量组装一个 Server。要接多个 Server，扩展点在应用组装层，不需要改工具执行逻辑。
 
-### Prompt
+## 14. API 恢复
 
-Skill 很多时，是不是应该把所有 SKILL.md 都直接放到 System Prompt？
+恢复逻辑集中在 `recovery` 包，避免每个模型请求各写一套重试。
 
-### Problem
+### 429 和服务过载
 
-全部加载会占用大量 Context，而且很多内容与当前任务无关。
+Rate Limit 和 Overloaded Error 使用指数退避并加一点随机抖动。连续遇到三次 Overloaded 后，如果配置了 `FALLBACK_MODEL`，后续请求切到备用模型。
 
-### Solution
+### 输出被截断
 
-先提供 Skill Catalog：
+`max_tokens` 是 `stop_reason`，不是普通 API Error。第一次出现时提高 `maxTokens`；仍然被截断时，保留已经生成的 Assistant 内容，再追加一条继续输出的消息。最多续写三次。
 
-```text
-name
-description
-```
+### 输入过长
 
-模型需要某个 Skill 时，再加载对应：
+检测到 prompt too long 后只尝试一次 `ReactiveCompact`。如果压缩后仍然过长，就把错误写进历史并结束本轮，避免无限压缩和重试。
 
-```text
-SKILL.md
-```
+## 15. Session 和日志
 
-### Result
-
-Skills 变成按需加载的能力。
-
-## 12. System Prompt：稳定信息和 messages 分开
-
-### Prompt
-
-Agent Identity、Workspace、Tools、Skills、Memory 这些稳定信息应该放在哪里？
-
-### Solution
-
-使用：
-
-```text
-prompt.GetSystemPrompt(...)
-```
-
-动态组装 System Prompt。
-
-模型请求可以概括为：
-
-```text
-System Prompt
-+
-messages[]
-+
-tools
-```
-
-### Result
-
-Runtime 配置与真实会话历史分离。
-
-## 13. Tool Error：为什么不能 return err
-
-### Prompt
-
-read_file 或 bash 执行失败时，AgentLoop 应该直接退出吗？
-
-### Problem
-
-如果 Handler 一报错就：
-
-```go
-return err
-```
-
-一个普通工具失败就会结束整个任务。
-
-### Solution
-
-转换为 Error ToolResult：
-
-```go
-toolResults = append(
-    toolResults,
-    anthropic.NewToolResultBlock(
-        block.ID,
-        err.Error(),
-        true,
-    ),
-)
-continue
-```
-
-### Result
-
-工具失败成为模型可以继续处理的环境反馈。
-
-## 14. Error Recovery：429 / 529、max_tokens、prompt_too_long
-
-### Prompt
-
-API 临时失败、输出被 max_tokens 截断、Context 太长时，Agent 应该如何恢复？
-
-### Solution
-
-使用 RecoveryState 和 WithRetry() 管理恢复逻辑。
-
-#### 429 / 529
-
-```text
-429 / 529
-    ↓
-backoff
-    ↓
-retry
-```
-
-#### max_tokens
-
-max_tokens 是 Stop Reason，不是普通 API Error：
-
-```text
-stop_reason = max_tokens
-        ↓
-increase maxTokens / continue
-        ↓
-call LLM again
-```
-
-#### prompt_too_long
-
-```text
-prompt_too_long
-       ↓
-ReactiveCompact
-       ↓
-retry
-```
-
-### Result
-
-可恢复错误尽量不会直接终止整个 Agent Turn。
-
-## 15. Context Compact：分层压缩
-
-### Prompt
-
-messages[] 越来越长，应该如何控制 Context？
-
-### Solution
-
-当前压缩管线：
-
-```text
-messages[]
-    ↓
-ToolResultBudget
-    ↓
-SnipCompact
-    ↓
-MicroCompact
-    ↓
-size > limit ?
-    ↓
-AutoCompact
-    ↓
-LLM
-```
-
-含义：
-
-- ToolResultBudget：限制大型 Tool Result
-- SnipCompact：裁剪中间历史
-- MicroCompact：压缩较旧结果
-- AutoCompact：超过阈值后摘要
-- ReactiveCompact：API 实际返回 Prompt Too Long 后再次压缩
-
-### Result
-
-Context 管理由简单截断升级为分层处理。
-
-## 16. Memory：为什么不能直接 append 到 Session.Messages
-
-### Prompt
-
-Memory 是不是每轮直接永久追加到 Session.Messages？
-
-### Problem
-
-如果长期 Memory 每轮都追加：
-
-- 相同 Memory 会重复
-- Context 越来越大
-- 长期信息和真实 Session History 混在一起
-
-### Solution
-
-Memory 流程：
-
-```text
-.memory/
-   ↓
-LoadMemories
-   ↓
-select relevant
-   ↓
-InjectMemories
-   ↓
-requestMessages
-   ↓
-LLM
-```
-
-其中：
-
-```text
-Session.Messages
-```
-
-保存真实会话历史；
-
-```text
-requestMessages
-```
-
-只是当前请求给 LLM 的临时版本。
-
-Agent Turn 结束后，再通过：
-
-```text
-memory.ExtractMemories(...)
-```
-
-把适合长期保存的信息写回 .memory/。
-
-### Result
-
-长期 Memory 与 Session History 解耦。
-
-## 17. Memory 与 Context Compact 的顺序
-
-### Problem
-
-Compact 会改变 messages[] 的长度和索引，如果提前记录当前用户消息位置，压缩后可能失效。
-
-### Solution
-
-Compact 后重新查找当前 User Turn：
-
-```go
-memoryTurn := memory.FindUserTurn(messages, query)
-```
-
-再执行：
-
-```go
-requestMessages = memory.InjectMemories(
-    messages,
-    memoryTurn,
-    memoriesContent,
-)
-```
-
-同时在压缩前保存：
-
-```go
-preCompress, err := memory.CloneMessages(messages)
-```
-
-结束时基于 preCompress 做 Memory Extract。
-
-### Result
-
-既保证 Memory 注入位置正确，也避免 Compact 导致长期信息提取丢失。
-
-## 18. Multi-Session：Session 不等于进程
-
-### Prompt
-
-要求 window1 / window2，是不是必须开两个终端或两个进程？
-
-### Conclusion
-
-不需要。一个 Go 进程可以维护多个逻辑 Session：
+一个进程可以维护多个逻辑 Session，不需要为每个话题启动一个终端：
 
 ```go
 type SessionManager struct {
@@ -704,306 +368,90 @@ type SessionManager struct {
 }
 ```
 
-Session：
+每个 Session 保存自己的消息、Todo 轮数、Logger 和后台任务 Manager。日志写到 `logs/<session>.log`，记录工具调用、结果和错误，排查问题时不会和其他 Session 混在一起。
 
-```go
-type Session struct {
-    ID              string
-    Messages        []anthropic.MessageParam
-    RoundsSinceTodo int
-}
-```
+Session 当前只存在内存中。进程退出后，消息历史不会恢复；需要跨进程保存的数据分别由 Memory、Task 和 Cron 处理。
 
-命令：
+## 16. 排查问题时先分层
 
-```text
-/session new <name>
-/session switch <name>
-/session list
-```
+开发过程中有几类错误看起来很像，但处理方向完全不同。
 
-### Result
+### 命令没有被 REPL 识别
 
-用户可以在同一个 Agent 进程中创建、切换和恢复多个独立 Session。
-
-## 19. Session 必须传指针，round 必须是局部变量
-
-### Problem 1：Session 传值
-
-如果：
-
-```go
-func AgentLoop(..., currentSession session.Session)
-```
-
-进入 AgentLoop 后修改的状态可能无法正确写回原 Session。
-
-### Solution
-
-使用：
-
-```go
-func AgentLoop(..., currentSession *session.Session) error
-```
-
-并在结束时写回：
-
-```go
-defer func() {
-    currentSession.Messages = messages
-}()
-```
-
-### Problem 2：round 是 package-global
-
-如果使用：
-
-```go
-var round = 0
-```
-
-多个请求和 Session 会共享同一计数。
-
-### Solution
-
-在每次 AgentLoop 内：
-
-```go
-round := 0
-
-for {
-    round++
-
-    if round > config.MAX_AGENT_ROUNDS {
-        return fmt.Errorf(
-            "maximum agent rounds exceeded: %d",
-            config.MAX_AGENT_ROUNDS,
-        )
-    }
-}
-```
-
-### Result
-
-Session 状态可以正确保存，同时每个 Agent Turn 独立计算最大轮数。
-
-## 20. Calculator、Web Search 与 Tool 类型
-
-### Prompt
-
-Calculator 应该怎么实现？Web Search 是不是本地 Handler？远程 Tool 是不是 MCP？
-
-### Calculator
-
-Calculator 只接收数学表达式：
-
-```json
-{
-  "expression": "(123+456)*2"
-}
-```
-
-内部使用受限表达式解析，而不是任意代码执行。
-
-### Tool 类型
-
-```text
-Client Tool
-→ 本地 Go Runtime 执行
-→ bash / read_file / calculator
-
-Server Tool
-→ API Provider 执行
-→ web_search
-
-MCP Tool
-→ 通过 MCP 协议连接独立 Tool Server
-```
-
-当前 web_search 属于 Server Tool，因此不需要：
-
-```go
-ToolHandlers["web_search"]
-```
-
-### Result
-
-Runtime 可以同时管理本地工具和 Provider 提供的 Server Tool。
-
-## 21. Provider / Credential 问题与 Runtime 问题要分开
-
-### Problem 1：UnsupportedModel 404
-
-曾遇到类似：
-
-```text
-404 Not Found
-UnsupportedModel
-The requested model does not support the agent plan feature.
-```
-
-### Analysis
-
-这类问题通常来自：
-
-- API Endpoint
-- Base URL
-- Model
-- Provider 对接口能力的支持
-
-不一定是 Agent Loop 本身的问题。
-
-### Problem 2：Anthropic Credential Error
-
-曾输入：
+例如：
 
 ```text
 / session switch default
 ```
 
-因为 / 后多了空格，没有被 Session Command Handler 匹配，于是被当成普通 Query 送入 AgentLoop，随后 SDK 才报：
-
-```text
-no Anthropic credentials found
-```
-
-正确命令：
+因为 `/` 后面多了空格，它不会匹配 Session 命令，而是被当作普通问题发给模型。正确写法是：
 
 ```text
 /session switch default
 ```
 
-### Result
+### Provider 配置错误
 
-调试时需要区分：
+`UnsupportedModel`、404、凭证错误通常先检查：
 
-```text
-CLI Command Error
-Provider Configuration Error
-Runtime Logic Error
-```
+- `BASE_URL` 是否正确
+- `MODEL` 是否存在
+- Provider 是否支持当前请求中的工具类型
+- API Key 是否传给了正确的服务
 
-## 22. Per-Session Log
+这类错误不一定来自 Agent Loop。
 
-### Prompt
+### Runtime 错误
 
-Tool Call Trace 是写一个全局日志，还是每个 Session 独立记录？
+如果报 `unknown tool`、Tool Result 配对失败或 JSON 类型断言错误，再去查 Schema、Handler、消息顺序和参数解析。
 
-### Solution
+先判断错误属于 CLI、Provider 还是 Runtime，通常比直接改 Loop 更快。
 
-每个 Session 使用独立 Logger：
-
-```text
-logs/
-├── default.log
-├── weather.log
-└── weekly.log
-```
-
-记录：
+## 17. 目前的调用关系
 
 ```text
-[tool_call]
-[tool_result]
-[tool_error]
+                       App
+                        |
+          +-------------+-------------+
+          |             |             |
+        REPL        Cron Queue      MCP Manager
+          |             |             |
+          +-------------+-------------+
+                        |
+                    AgentLoop
+                        |
+          +-------------+-------------+
+          |             |             |
+       Memory        Compact        Recovery
+          |             |             |
+          +-------------+-------------+
+                        |
+                       LLM
+                        |
+                  local tool_use
+                        |
+              Hooks -> Handler
+                        |
+       +----------------+----------------+
+       |                |                |
+   File/Shell       Task/Team       Cron/Worktree
 ```
 
-### Result
+主循环只处理消息协议和调度。文件、任务、记忆、MCP、定时任务等状态各自留在对应包里。新增模块时，优先接现有的 Handler、Hook 或 Manager，不要继续往 `AgentLoop` 里塞特例。
 
-不同 Session 的执行过程不会混在一起，便于调试和追踪。
+## 18. 提交前检查
 
-## Final Architecture
-
-最终 Runtime 可以概括为：
-
-```text
-                    SessionManager
-                          │
-                          ▼
-                    Current Session
-                          │
-                          ▼
-                    User Prompt
-                          │
-                   UserPromptSubmit
-                          │
-                          ▼
-                      messages[]
-                          │
-            ┌─────────────┴─────────────┐
-            │                           │
-            ▼                           ▼
-     Context Compact               Load Memory
-            │                           │
-            └─────────────┬─────────────┘
-                          ▼
-                    Inject Memory
-                          │
-                          ▼
-                    System Prompt
-                          │
-                          ▼
-                         LLM
-                          │
-                    tool_use ?
-                   ┌──────┴──────┐
-                   │             │
-                  Yes            No
-                   │             │
-                   ▼             ▼
-              PreToolUse      Final Answer
-                   │             │
-                   ▼             ▼
-              Execute Tool   Extract Memory
-                   │
-                   ▼
-              PostToolUse
-                   │
-                   ▼
-              tool_result
-                   │
-                   └──────────────► messages[]
+```bash
+go fmt ./...
+go test ./...
+go build ./...
 ```
 
-外围能力包括：
+如果改了工具，还要额外确认：
 
-```text
-Error Recovery
-├── 429 / 529 Retry
-├── max_tokens Recovery
-└── prompt_too_long → ReactiveCompact
-
-Planning
-├── todo_write
-└── Subagent
-
-Knowledge
-└── Skills
-
-Safety
-└── Permission
-
-Observability
-└── Per-Session Log
-```
-
-## Summary
-
-本项目包含：
-
-1. Agent Loop
-2. Tool Registry
-3. Tool Error Handling
-4. Permission
-5. Hooks
-6. Todo
-7. Subagent
-8. Skills
-9. System Prompt
-10. Error Recovery
-11. Context Compact
-12. Memory
-13. Multi-Session
-14. MAX_AGENT_ROUNDS
-15. Client Tool / Server Tool
-16. Per-Session Log
+- Schema 名称和 Handler Key 一致
+- 必填字段与实际解析一致
+- 普通执行错误会返回 Tool Result
+- 写文件时没有越出工作区
+- Subagent 或 Teammate 是否也需要这个工具
+- 大输出是否会进入压缩或落盘流程
